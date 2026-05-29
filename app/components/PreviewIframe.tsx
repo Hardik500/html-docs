@@ -5,6 +5,15 @@ interface PreviewIframeProps {
   title?: string;
 }
 
+interface FrameState {
+  id: number;
+  html: string;
+  /** true once onLoad has fired and the frame has been painted */
+  ready: boolean;
+}
+
+const CROSSFADE_MS = 150;
+
 const PREVIEW_CSP = [
   "default-src 'none'",
   "script-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net",
@@ -27,56 +36,60 @@ function injectCsp(html: string): string {
 }
 
 export default function PreviewIframe({ html, title = "Preview" }: PreviewIframeProps) {
-  const [frames, setFrames] = useState([{ id: 0, html }]);
+  const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html, ready: true }]);
   const nextId = useRef(1);
 
-  // Double-buffering: when html changes, add a new hidden iframe.
-  // When it finishes loading, remove all older iframes so it becomes visible.
+  // When html changes, push a new background frame (ready=false).
+  // The old frame(s) remain visible underneath until the new one fades in.
   useEffect(() => {
     setFrames((prev) => {
       if (prev[prev.length - 1].html === html) return prev;
-      return [...prev, { id: nextId.current++, html }];
+      return [...prev, { id: nextId.current++, html, ready: false }];
     });
   }, [html]);
 
   const handleLoad = (id: number) => {
-    // Double-rAF: wait until browser has painted the new frame before swap.
-    // Without this, onLoad fires before compositing → white flash.
+    // Double-rAF ensures the browser has painted the new frame before we
+    // trigger the CSS fade-in. Without this, opacity transitions over an
+    // unrendered surface still flash white.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        setFrames((prev) => {
-          const index = prev.findIndex((f) => f.id === id);
-          if (index === -1) return prev;
-          return prev.slice(index);
-        });
+        // Mark frame as ready → CSS transition fades it in over the old frame.
+        setFrames((prev) =>
+          prev.map((f) => (f.id === id ? { ...f, ready: true } : f))
+        );
+        // After the crossfade completes, discard stale frames underneath.
+        setTimeout(() => {
+          setFrames((prev) => {
+            const index = prev.findIndex((f) => f.id === id);
+            if (index === -1) return prev;
+            return prev.slice(index);
+          });
+        }, CROSSFADE_MS + 50); // small buffer after transition ends
       });
     });
   };
 
   return (
     <div className="relative w-full h-full bg-white">
-      {frames.map((frame, i) => {
-        // Only the oldest frame in the list is visible. Newer frames are loading in the background.
-        const isVisible = i === 0;
-        return (
-          <iframe
-            key={frame.id}
-            srcDoc={injectCsp(frame.html)}
-            onLoad={() => handleLoad(frame.id)}
-            sandbox="allow-scripts"
-            title={title}
-            className="absolute inset-0 w-full h-full border-0"
-            style={{
-              opacity: isVisible ? 1 : 0,
-              // Do NOT use visibility:hidden — it stops the browser from
-              // compositing the background frame, causing a white flash on swap.
-              // pointer-events:none keeps hidden frames inert instead.
-              pointerEvents: isVisible ? "auto" : "none",
-              zIndex: isVisible ? 1 : 0,
-            }}
-          />
-        );
-      })}
+      {frames.map((frame, i) => (
+        <iframe
+          key={frame.id}
+          srcDoc={injectCsp(frame.html)}
+          onLoad={() => handleLoad(frame.id)}
+          sandbox="allow-scripts"
+          title={title}
+          className="absolute inset-0 w-full h-full border-0"
+          style={{
+            opacity: frame.ready ? 1 : 0,
+            // Fade in when ready; no transition while loading (avoids flash on removal).
+            transition: frame.ready ? `opacity ${CROSSFADE_MS}ms ease-in` : "none",
+            pointerEvents: frame.ready ? "auto" : "none",
+            // Newer frames stack on top so they fade in over the old content.
+            zIndex: i,
+          }}
+        />
+      ))}
     </div>
   );
 }
