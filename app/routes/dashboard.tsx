@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Form, Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
@@ -43,6 +44,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function Dashboard() {
   const { docs, email } = useLoaderData<typeof loader>();
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-100">
@@ -113,15 +115,27 @@ export default function Dashboard() {
                     <div className="hidden sm:flex col-span-2 justify-end items-center">
                       <span className="text-sm text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-md border border-white/5">{doc.view_count}</span>
                     </div>
-                    <div className="col-span-6 sm:col-span-2 flex items-center justify-end gap-3">
-                      <Link to={`/d/${doc.id}/edit`} className="text-sm font-medium text-gray-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md">Edit</Link>
-                      <Form
-                        method="post"
-                        action={`/dashboard/docs/${doc.id}/delete`}
-                        onSubmit={(e) => { if (!confirm(`Delete "${doc.title}"?`)) e.preventDefault(); }}
-                      >
-                        <button type="submit" className="text-sm font-medium text-gray-400 hover:text-red-400 transition-colors bg-white/5 hover:bg-red-500/10 px-3 py-1.5 rounded-md">Delete</button>
-                      </Form>
+                    <div className="col-span-6 sm:col-span-2 flex items-center justify-end gap-2">
+                      {confirmingId === doc.id ? (
+                        <>
+                          <span className="text-xs text-gray-400 whitespace-nowrap">Sure?</span>
+                          <Form method="post" action={`/dashboard/docs/${doc.id}/delete`}>
+                            <button type="submit" className="text-xs font-medium text-red-400 hover:text-red-300 bg-red-500/10 hover:bg-red-500/20 px-2.5 py-1.5 rounded-md transition-colors">Yes</button>
+                          </Form>
+                          <button
+                            onClick={() => setConfirmingId(null)}
+                            className="text-xs font-medium text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 px-2.5 py-1.5 rounded-md transition-colors"
+                          >Cancel</button>
+                        </>
+                      ) : (
+                        <>
+                          <Link to={`/d/${doc.id}/edit`} className="text-sm font-medium text-gray-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md">Edit</Link>
+                          <button
+                            onClick={() => setConfirmingId(doc.id)}
+                            className="text-sm font-medium text-gray-400 hover:text-red-400 transition-colors bg-white/5 hover:bg-red-500/10 px-3 py-1.5 rounded-md"
+                          >Delete</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
