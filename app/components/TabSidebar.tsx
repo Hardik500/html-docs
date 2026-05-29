@@ -59,42 +59,42 @@ function SortableTab({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-1 px-2 py-2 rounded cursor-pointer ${
-        isActive ? "bg-gray-700 text-white" : "text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+      className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm font-medium transition-colors ${
+        isActive ? "bg-white/10 text-white shadow-sm" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
       }`}
     >
       {/* Drag handle */}
       <span
         {...attributes}
         {...listeners}
-        className="text-gray-600 cursor-grab active:cursor-grabbing px-1"
+        className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity"
         aria-label="Drag to reorder"
       >
-        ⠿
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
       </span>
 
       <button
-        className="flex-1 text-left text-sm truncate"
+        className="flex-1 text-left truncate -ml-1 focus:outline-none"
         onClick={() => onSelect(tab.id)}
       >
         {tab.name}
       </button>
 
-      <div className="hidden group-hover:flex items-center gap-1">
+      <div className="hidden group-hover:flex items-center gap-0.5">
         <button
           onClick={handleRename}
-          className="text-gray-500 hover:text-gray-200 text-xs px-1"
+          className="text-gray-500 hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
           title="Rename"
         >
-          ✏
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         </button>
         {canDelete && (
           <button
             onClick={() => onDelete(tab.id)}
-            className="text-gray-500 hover:text-red-400 text-xs px-1"
+            className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-400/10 transition-colors"
             title="Delete tab"
           >
-            ✕
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         )}
       </div>
@@ -142,22 +142,22 @@ export default function TabSidebar({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border-r border-gray-800 w-52 shrink-0">
-      <div className="px-3 py-3 border-b border-gray-800 flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-          Tabs
+    <div className="flex flex-col h-full bg-gray-950 border-r border-white/5 w-56 shrink-0 z-10">
+      <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+          Files
         </span>
         <button
           onClick={onAdd}
           disabled={tabs.length >= 20}
-          className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-40"
+          className="text-xs font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded"
           title="Add tab"
         >
-          + Add
+          <span>+</span> Add
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2">
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}

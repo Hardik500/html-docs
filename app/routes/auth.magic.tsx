@@ -1,4 +1,4 @@
-import { Form, useActionData } from "react-router";
+import { Form, useActionData, Link } from "react-router";
 import type { Route } from "./+types/auth.magic";
 import { query } from "~/lib/db.server";
 import { newMagicToken } from "~/lib/ids";
@@ -78,9 +78,9 @@ export default function MagicLinkPage() {
   return (
     <main className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
-        <a href="/" className="block text-sm font-semibold text-indigo-400 mb-8">
+        <Link to="/" className="block text-sm font-semibold text-indigo-400 mb-8 hover:text-indigo-300 transition-colors">
           ← html-docs
-        </a>
+        </Link>
         <h1 className="text-2xl font-bold mb-2">Sign in</h1>
         <p className="text-gray-400 text-sm mb-6">
           Enter your email and we'll send you a magic link to sign in.

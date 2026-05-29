@@ -1,4 +1,4 @@
-import { useLoaderData, useNavigate } from "react-router";
+import { useLoaderData, useNavigate, Link } from "react-router";
 import type { Route } from "./+types/d.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
@@ -81,23 +81,26 @@ export default function ViewerPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
       {/* Top nav */}
-      <header className="border-b border-gray-800 px-4 py-2 flex items-center justify-between gap-4 shrink-0">
+      <header className="border-b border-white/5 bg-gray-950/80 backdrop-blur-md px-4 py-3 flex items-center justify-between gap-4 shrink-0 z-10">
         <div className="flex items-center gap-3 min-w-0">
-          <a href="/" className="text-sm font-semibold shrink-0 hover:text-indigo-400 transition-colors">
-            html-docs
-          </a>
-          <span className="text-gray-600">/</span>
-          <span className="text-sm text-gray-300 truncate">{doc.title}</span>
+          <Link to="/" className="flex items-center gap-2 group shrink-0">
+            <div className="w-5 h-5 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
+              <span className="text-white font-bold text-[10px] font-mono">&lt;/&gt;</span>
+            </div>
+            <span className="text-sm font-semibold tracking-wide text-gray-300 group-hover:text-white transition-colors">html-docs</span>
+          </Link>
+          <div className="h-4 w-px bg-white/10 shrink-0"></div>
+          <span className="text-sm text-gray-300 font-medium truncate">{doc.title}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ShareBox docId={doc.id} tabSlug={activeTab.slug} />
           {canEdit && (
-            <a
-              href={`/d/${doc.id}/edit`}
-              className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition-colors"
+            <Link
+              to={`/d/${doc.id}/edit`}
+              className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md transition-colors shadow-sm shadow-indigo-500/20"
             >
               Edit
-            </a>
+            </Link>
           )}
         </div>
       </header>
@@ -106,7 +109,7 @@ export default function ViewerPage() {
       <TabBar tabs={tabs} activeSlug={activeTab.slug} docId={doc.id} />
 
       {/* Iframe */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden bg-white">
         <iframe
           key={activeTab.slug}
           src={`/raw/${doc.id}/${activeTab.slug}`}
@@ -117,11 +120,11 @@ export default function ViewerPage() {
       </div>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 px-4 py-2 text-center text-xs text-gray-600">
+      <footer className="border-t border-white/5 bg-gray-950 px-4 py-2 text-center text-xs text-gray-600">
         Powered by{" "}
-        <a href="/" className="underline hover:text-gray-400">
+        <Link to="/" className="text-gray-500 hover:text-gray-300 transition-colors">
           html-docs
-        </a>
+        </Link>
       </footer>
     </div>
   );

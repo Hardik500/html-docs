@@ -26,7 +26,7 @@ export default function ShareBox({ docId, tabSlug }: ShareBoxProps) {
   return (
     <button
       onClick={handleCopy}
-      className="text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 px-3 py-1.5 rounded transition-colors"
+      className="text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
       title="Copy share link"
     >
       {copied ? "✓ Copied!" : "Share"}

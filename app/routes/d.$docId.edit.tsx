@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
-import { useLoaderData, useFetcher, redirect } from "react-router";
+import { useLoaderData, useFetcher, redirect, Link } from "react-router";
 import type { Route } from "./+types/d.$docId.edit";
 import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
@@ -231,32 +231,38 @@ export default function EditPage() {
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
       {/* Top bar */}
-      <header className="border-b border-gray-800 px-4 py-2 flex items-center gap-3 shrink-0">
-        <a href="/" className="text-sm font-semibold text-indigo-400 shrink-0">html-docs</a>
+      <header className="border-b border-white/5 bg-gray-950/80 backdrop-blur-md px-4 py-3 flex items-center gap-4 shrink-0 z-10">
+        <Link to="/" className="flex items-center gap-2 group shrink-0">
+          <div className="w-5 h-5 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
+            <span className="text-white font-bold text-[10px] font-mono">&lt;/&gt;</span>
+          </div>
+          <span className="text-sm font-semibold tracking-wide text-gray-300 group-hover:text-white transition-colors">html-docs</span>
+        </Link>
+        <div className="h-4 w-px bg-white/10 shrink-0"></div>
         <input
           value={docTitle}
           onChange={(e) => { setDocTitle(e.target.value); setSaved(false); }}
           onBlur={save}
-          className="flex-1 bg-transparent text-gray-200 text-sm focus:outline-none border-b border-transparent focus:border-gray-600 px-1 min-w-0"
+          className="flex-1 bg-transparent text-gray-200 text-sm font-medium focus:outline-none border-b border-transparent focus:border-indigo-500/50 px-1 min-w-0 transition-colors placeholder-gray-600"
           placeholder="Untitled document"
         />
-        <div className="flex items-center gap-2 shrink-0">
-          {!saved && <span className="text-xs text-yellow-500">Unsaved</span>}
-          <button onClick={save} className="text-xs bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 rounded transition-colors">
+        <div className="flex items-center gap-3 shrink-0">
+          {!saved && <span className="text-xs font-medium text-yellow-500/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500/80"></span>Unsaved</span>}
+          <button onClick={save} className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md transition-colors shadow-sm shadow-indigo-500/20">
             Save
           </button>
           <a href={viewUrl} target="_blank" rel="noopener noreferrer"
-            className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded transition-colors">
-            View ↗
+            className="text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5">
+            View <span className="text-gray-400">↗</span>
           </a>
           <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${viewUrl}`)}
-            className="text-xs text-gray-400 hover:text-gray-200 px-2 py-1.5 rounded transition-colors">
+            className="text-xs font-medium text-gray-400 hover:text-white px-2 py-1.5 rounded-md transition-colors">
             Copy link
           </button>
           {!isOwner && (
-            <a href="/auth/magic" className="text-xs text-indigo-400 hover:text-indigo-300">
+            <Link to="/auth/magic" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 ml-2">
               Sign in to claim →
-            </a>
+            </Link>
           )}
         </div>
       </header>
@@ -274,7 +280,7 @@ export default function EditPage() {
         />
 
         {/* Monaco editor */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden bg-[#1e1e1e]">
           <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading editor…</div>}>
             <Editor
               value={activeTab?.html ?? ""}
@@ -285,8 +291,8 @@ export default function EditPage() {
         </div>
 
         {/* Preview */}
-        <div className="flex-1 overflow-hidden border-l border-gray-800">
-          <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500 bg-white">Loading…</div>}>
+        <div className="flex-1 overflow-hidden border-l border-white/5 bg-white">
+          <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading…</div>}>
             <PreviewIframe html={previewHtml} />
           </Suspense>
         </div>
