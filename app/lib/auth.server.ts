@@ -2,7 +2,7 @@ import { createCookieSessionStorage, redirect } from "react-router";
 import { query } from "./db.server";
 import { newSessionId } from "./ids";
 
-const SESSION_SECRET = process.env.SESSION_SECRET || "change-me-in-production";
+const SESSION_SECRET = process.env.SESSION_SECRET!;
 
 export const sessionStorage = createCookieSessionStorage({
   cookie: {

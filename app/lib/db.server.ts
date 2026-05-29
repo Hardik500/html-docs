@@ -1,4 +1,5 @@
 import pg from "pg";
+import { validateEnv } from "./env.server";
 
 const { Pool } = pg;
 
@@ -11,11 +12,14 @@ declare global {
 
 // Reuse pool across hot-reloads in development
 if (process.env.NODE_ENV === "production") {
+  validateEnv();
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_URL?.includes("localhost")
-      ? false
-      : { rejectUnauthorized: false },
+    ssl:
+      process.env.DATABASE_URL?.includes("localhost") ||
+      process.env.DATABASE_URL?.includes(".internal")
+        ? false
+        : { rejectUnauthorized: true },
   });
 } else {
   if (!global.__pgPool) {
