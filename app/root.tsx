@@ -8,7 +8,21 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
+import { APP_CSP } from "./lib/csp.server";
 import "./app.css";
+
+export async function loader(_: Route.LoaderArgs) {
+  return new Response(null, {
+    headers: {
+      "Content-Security-Policy": APP_CSP,
+      "X-Frame-Options": "DENY",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
+      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+    },
+  });
+}
 
 export const links: Route.LinksFunction = () => [
   { rel: "preconnect", href: "https://fonts.googleapis.com" },

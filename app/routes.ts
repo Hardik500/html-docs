@@ -14,4 +14,5 @@ export default [
   route("/dashboard", "routes/dashboard.tsx"),
   route("/dashboard/docs/:id/delete", "routes/dashboard.docs.$id.delete.tsx"),
   route("/dashboard/docs/:id/rename", "routes/dashboard.docs.$id.rename.tsx"),
+  route("/healthz", "routes/healthz.tsx"),
 ] satisfies RouteConfig;

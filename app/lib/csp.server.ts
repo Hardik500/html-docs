@@ -1,4 +1,23 @@
 /**
+ * CSP for the app shell (editor, viewer, dashboard).
+ * Permissive on scripts/styles to accommodate Monaco editor (blob: workers,
+ * unsafe-inline), but locks down fonts, frames, objects, and base-uri.
+ */
+export const APP_CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: https:",
+  "worker-src blob:",
+  "frame-src blob: 'self'",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+/**
  * CSP for raw HTML iframe content — allows inline scripts/styles and
  * common CDNs but blocks same-origin access and parent navigation.
  */
