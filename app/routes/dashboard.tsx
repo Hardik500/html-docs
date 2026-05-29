@@ -39,7 +39,14 @@ export async function loader({ request }: Route.LoaderArgs) {
     query<{ email: string }>("SELECT email FROM users WHERE id = $1", [userId]),
   ]);
 
-  return { docs: docsResult.rows, email: userResult.rows[0]?.email ?? "" };
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const docs = docsResult.rows.map((doc) => {
+    const d = new Date(doc.last_activity_at);
+    const formatted = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+    return { ...doc, last_activity_at: formatted };
+  });
+
+  return { docs, email: userResult.rows[0]?.email ?? "" };
 }
 
 export default function Dashboard() {
@@ -109,7 +116,7 @@ export default function Dashboard() {
                     </div>
                     <div className="hidden sm:flex col-span-3 items-center">
                       <span className="text-sm text-gray-400">
-                        {new Date(doc.last_activity_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                        {doc.last_activity_at}
                       </span>
                     </div>
                     <div className="hidden sm:flex col-span-2 justify-end items-center">
