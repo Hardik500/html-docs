@@ -18,7 +18,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  let title = String(formData.get("title") ?? "").trim();
+  let title = String(formData.get("title") ?? "").trim().slice(0, 500);
 
   // If submitted as form without title field (from dashboard button),
   // prompt via the response — but since we're server-side, use existing title

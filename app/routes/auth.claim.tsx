@@ -6,6 +6,7 @@ import { newEditToken } from "~/lib/ids";
 
 export async function action({ request }: Route.ActionArgs) {
   const userId = await requireUserId(request);
+  // editToken comes from the page's loader data (JS heap) — never from a URL.
   const body = await request.json() as { docId: string; editToken: string };
   const { docId, editToken } = body;
 

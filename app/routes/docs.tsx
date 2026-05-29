@@ -22,6 +22,9 @@ export async function action({ request }: Route.ActionArgs) {
     throw new Response("Method not allowed", { status: 405 });
   }
 
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > 1_100_000) throw new Response("Payload too large", { status: 413 });
+
   const userId = await getUserId(request);
 
   // Rate-limit anonymous users
@@ -50,8 +53,8 @@ export async function action({ request }: Route.ActionArgs) {
   const editToken = newEditToken();
   const tabId = newTabId();
 
-  const tabName = titleInput || extractTitle(html, "Tab 1");
-  const docTitle = titleInput || tabName;
+  const tabName = (titleInput || extractTitle(html, "Tab 1")).slice(0, 500);
+  const docTitle = (titleInput || tabName).slice(0, 500);
   const slug = slugify(tabName) || "tab-1";
 
   await query(
@@ -69,13 +72,14 @@ export async function action({ request }: Route.ActionArgs) {
   // Set anon edit cookie (scoped to this doc)
   const headers = new Headers();
   if (!userId) {
+    const isSecure = process.env.NODE_ENV === "production";
     headers.append(
       "Set-Cookie",
-      `anon_edit_${docId}=${editToken}; Path=/d/${docId}; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}`
+      `anon_edit_${docId}=${editToken}; Path=/d/${docId}; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 365}${isSecure ? "; Secure" : ""}`
     );
   }
 
-  const editUrl = `/d/${docId}/edit?token=${editToken}`;
+  const editUrl = `/d/${docId}/edit`;
   headers.append("Location", editUrl);
 
   return new Response(null, { status: 302, headers });

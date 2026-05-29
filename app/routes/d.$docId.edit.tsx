@@ -11,15 +11,13 @@ import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
 
-const MAX_HTML_BYTES = 1_048_576;
+const MAX_HTML_BYTES = 500_000; // 500 KB per tab
 const MAX_TABS = 20;
 
 // ── Loader ──────────────────────────────────────────────────────────────────
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const { docId } = params;
-  const url = new URL(request.url);
-  const tokenFromUrl = url.searchParams.get("token");
 
   const docResult = await query<{
     id: string; title: string; edit_token: string; owner_user_id: string | null;
@@ -34,7 +32,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const authorized =
     (userId && userId === doc.owner_user_id) ||
-    tokenFromUrl === doc.edit_token ||
     tokenFromCookie === doc.edit_token;
 
   if (!authorized) throw new Response("Forbidden", { status: 403 });
@@ -45,6 +42,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   );
 
   return {
+    // editToken is returned for the in-memory claim flow only — never placed in a URL.
     doc: { id: doc.id, title: doc.title, editToken: doc.edit_token },
     tabs: tabsResult.rows,
     userId: userId ?? null,
@@ -56,8 +54,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
 export async function action({ params, request }: Route.ActionArgs) {
   const { docId } = params;
-  const url = new URL(request.url);
-  const tokenFromUrl = url.searchParams.get("token");
 
   const docResult = await query<{ edit_token: string; owner_user_id: string | null }>(
     "SELECT edit_token, owner_user_id FROM docs WHERE id = $1", [docId]
@@ -71,10 +67,12 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   const authorized =
     (userId && userId === doc.owner_user_id) ||
-    tokenFromUrl === doc.edit_token ||
     tokenFromCookie === doc.edit_token;
 
   if (!authorized) throw new Response("Forbidden", { status: 403 });
+
+  const contentLength = Number(request.headers.get("content-length") ?? 0);
+  if (contentLength > 1_100_000) throw new Response("Payload too large", { status: 413 });
 
   const body = await request.json() as {
     intent: string;
@@ -85,7 +83,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (body.intent === "save") {
     // Update doc title
     if (body.title) {
-      await query("UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2", [body.title, docId]);
+      await query("UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2", [body.title.slice(0, 500), docId]);
     }
 
     const existingSlugs = await query<{ id: string; slug: string }>(
@@ -105,7 +103,7 @@ export async function action({ params, request }: Route.ActionArgs) {
       const isNew = !tab.id || tab.id.startsWith("new:");
       if (isNew) {
         const tabId = newTabId();
-        const name = tab.name || "New Tab";
+        const name = (tab.name || "New Tab").slice(0, 200);
         const html = tab.html || "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>";
         const existingSlugSet = new Set([...slugMap.values()]);
         const slug = dedupeSlug(slugify(name), existingSlugSet);
@@ -118,7 +116,7 @@ export async function action({ params, request }: Route.ActionArgs) {
       } else {
         const html = tab.html ?? "";
         if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) continue;
-        const name = tab.name || extractTitle(html, "Tab");
+        const name = (tab.name || extractTitle(html, "Tab")).slice(0, 200);
         await query(
           "UPDATE tabs SET name=$1, position=$2, html=$3, updated_at=now(), version=version+1 WHERE id=$4 AND doc_id=$5",
           [name, tab.position, html, tab.id, docId]
@@ -229,7 +227,6 @@ export default function EditPage() {
   }
 
   const viewUrl = `/d/${doc.id}/${activeTab?.slug ?? ""}`;
-  const editUrl = `/d/${doc.id}/edit?token=${doc.editToken}`;
 
   return (
     <div className="flex flex-col h-screen bg-gray-950 text-gray-100">

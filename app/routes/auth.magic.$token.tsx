@@ -33,8 +33,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   const userId = await upsertUser(row.email);
 
+  const rawRedirect = new URL(request.url).searchParams.get("redirect") ?? "";
   const redirectTo =
-    new URL(request.url).searchParams.get("redirect") || "/dashboard";
+    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
+      ? rawRedirect
+      : "/dashboard";
 
   return createUserSession(userId, redirectTo);
 }

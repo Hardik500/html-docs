@@ -13,7 +13,7 @@ interface Tab {
 }
 
 interface LoaderData {
-  doc: { id: string; title: string; editToken: string | null };
+  doc: { id: string; title: string };
   tabs: Tab[];
   activeTab: Tab;
   canEdit: boolean;
@@ -64,7 +64,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     false;
 
   return {
-    doc: { id: doc.id, title: doc.title, editToken: canEdit ? doc.edit_token : null },
+    doc: { id: doc.id, title: doc.title },
     tabs,
     activeTab,
     canEdit: Boolean(canEdit),
@@ -93,7 +93,7 @@ export default function ViewerPage() {
           <ShareBox docId={doc.id} tabSlug={activeTab.slug} />
           {canEdit && (
             <a
-              href={`/d/${doc.id}/edit?token=${doc.editToken}`}
+              href={`/d/${doc.id}/edit`}
               className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded transition-colors"
             >
               Edit
