@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <pre id="out">Connecting...</pre>
+  <script>
+    // WebSocket — blocked by connect-src 'none'
+    try {
+      const ws = new WebSocket('wss://echo.websocket.org');
+      ws.onopen = () => { document.getElementById('out').textContent = 'Connected!'; };
+      ws.onerror = (e) => { document.getElementById('out').textContent = 'WS error (expected under CSP)'; };
+    } catch(e) {
+      document.getElementById('out').textContent = 'Error: ' + e.message;
+    }
+  </script>
+</body>
+</html>

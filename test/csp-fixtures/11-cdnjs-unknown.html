@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- cdnjs.cloudflare.com is NOT in the allowlist -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
+</head>
+<body>
+  <pre id="out">Waiting...</pre>
+  <script>
+    axios.get('https://jsonplaceholder.typicode.com/todos/1')
+      .then(r => { document.getElementById('out').textContent = JSON.stringify(r.data); })
+      .catch(e => { document.getElementById('out').textContent = 'Error: ' + e; });
+  </script>
+</body>
+</html>

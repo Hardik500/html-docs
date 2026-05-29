@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- GSAP from cdnjs — NOT in allowlist -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+  <style>
+    .box { width: 100px; height: 100px; background: #e74c3c; margin: 50px; }
+  </style>
+</head>
+<body>
+  <div class="box" id="box"></div>
+  <script>
+    gsap.to('#box', { x: 300, rotation: 360, duration: 2, repeat: -1 });
+  </script>
+</body>
+</html>

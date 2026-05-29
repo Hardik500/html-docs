@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!-- Import maps + ESM — increasingly common in AI output -->
+  <script type="importmap">
+    { "imports": { "lodash": "https://cdn.jsdelivr.net/npm/lodash-es@4.17.21/lodash.js" } }
+  </script>
+</head>
+<body>
+  <pre id="out"></pre>
+  <script type="module">
+    import { chunk } from 'lodash';
+    document.getElementById('out').textContent = JSON.stringify(chunk([1,2,3,4,5], 2));
+  </script>
+</body>
+</html>

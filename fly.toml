@@ -1,0 +1,36 @@
+app = "html-docs"
+primary_region = "ord"
+kill_signal = "SIGINT"
+kill_timeout = "5s"
+
+[build]
+
+[deploy]
+  release_command = "node -e \"require('fs').readFileSync('./db/migrations/0001_init.sql','utf8')\" || true"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
+
+# Daily cron to clean up anon docs older than 30 days
+[[processes]]
+  name = "app"
+  entrypoint = ["node", "./build/server/index.js"]

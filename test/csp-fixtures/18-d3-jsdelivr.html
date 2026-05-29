@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+</head>
+<body>
+  <svg id="chart" width="400" height="200"></svg>
+  <script>
+    const data = [30, 80, 45, 60, 20, 90, 55];
+    const svg = d3.select('#chart');
+    svg.selectAll('rect')
+      .data(data).enter().append('rect')
+      .attr('x', (d, i) => i * 55)
+      .attr('y', d => 200 - d)
+      .attr('width', 50).attr('height', d => d)
+      .attr('fill', 'steelblue');
+  </script>
+</body>
+</html>

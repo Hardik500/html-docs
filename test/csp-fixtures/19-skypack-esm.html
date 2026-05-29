@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <pre id="out">Loading...</pre>
+  <script type="module">
+    // Skypack is NOT in the allowlist
+    import confetti from 'https://cdn.skypack.dev/canvas-confetti';
+    confetti();
+    document.getElementById('out').textContent = 'Confetti fired!';
+  </script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <button onclick="save()">Save to localStorage</button>
+  <p id="out"></p>
+  <script>
+    // localStorage is blocked when sandbox="allow-scripts" without allow-same-origin
+    function save() {
+      try {
+        localStorage.setItem('key', 'value');
+        document.getElementById('out').textContent = 'Saved: ' + localStorage.getItem('key');
+      } catch(e) {
+        document.getElementById('out').textContent = 'ERROR: ' + e.message;
+      }
+    }
+    // Also try reading on load
+    try {
+      const v = localStorage.getItem('key');
+      document.getElementById('out').textContent = 'Read: ' + v;
+    } catch(e) {
+      document.getElementById('out').textContent = 'Load error: ' + e.message;
+    }
+  </script>
+</body>
+</html>

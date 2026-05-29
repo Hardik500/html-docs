@@ -1,0 +1,39 @@
+{
+  "name": "html-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "react-router build",
+    "dev": "react-router dev",
+    "start": "react-router-serve ./build/server/index.js",
+    "typecheck": "react-router typegen && tsc"
+  },
+  "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@monaco-editor/react": "^4.7.0",
+    "@react-router/node": "7.15.1",
+    "@react-router/serve": "7.15.1",
+    "isbot": "^5.1.36",
+    "nanoid": "^5.1.11",
+    "node-html-parser": "^7.1.0",
+    "pg": "^8.21.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router": "7.15.1",
+    "resend": "^6.12.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@react-router/dev": "7.15.1",
+    "@tailwindcss/vite": "^4.2.2",
+    "@types/node": "^22",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "^4.2.2",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.3"
+  }
+}
