@@ -1,7 +1,14 @@
-import { Form, Link } from "react-router";
+import { Form, Link, redirect } from "react-router";
 import type { Route } from "./+types/_index";
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import PreviewIframe from "~/components/PreviewIframe";
+import { getUserId } from "~/lib/auth.server";
+
+export async function loader({ request }: Route.LoaderArgs) {
+  const userId = await getUserId(request);
+  if (userId) return redirect("/dashboard");
+  return {};
+}
 
 const Editor = lazy(() => import("~/components/Editor"));
 
