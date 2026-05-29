@@ -169,9 +169,22 @@ export default function EditPage() {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // true while a fetch is in flight — checked in the completion effect.
+  const isSavingRef = useRef(false);
+  // true if changes arrived after the last save() call started.
+  // Reset at the top of save(); set by markDirty().
+  // When a save completes and this is true, we keep saved=false so the
+  // autosave loop immediately schedules another save for the new changes.
+  const newChangesRef = useRef(titleDerived); // titleDerived = already unsaved
 
   // When true, user has manually edited the doc title — HTML changes stop driving it.
   const docTitleLockedRef = useRef(false);
+
+  /** Mark state as dirty. Always use this instead of bare setSaved(false). */
+  function markDirty() {
+    newChangesRef.current = true;
+    setSaved(false);
+  }
 
   // Per-tab auto-name tracking. Map<tabId, lastAutoDerivedName | "\0" (locked)>.
   // A tab is "locked" once the user renames it manually.
@@ -179,37 +192,66 @@ export default function EditPage() {
     new Map(initialTabs.map((t) => [t.id, t.name]))
   );
 
+  // @monaco-editor/react captures `onChange` once on mount and never updates it,
+  // so `handleHtmlChange` is always the stale closure from the first render.
+  // Keep these refs current every render so the stale closure reads correct values.
+  const activeTabIdRef = useRef(activeTabId);
+  activeTabIdRef.current = activeTabId;
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
+  // Keep current docTitle/tabs accessible inside the stale autoSave closure.
+  const docTitleRef = useRef(docTitle);
+  docTitleRef.current = docTitle;
+  const tabsForSaveRef = useRef(tabs);
+  tabsForSaveRef.current = tabs;
+
   function save() {
+    if (isSavingRef.current) return; // already in flight, skip
+    newChangesRef.current = false;   // snapshot: no new changes yet
+    isSavingRef.current = true;
     setSaving(true);
     fetcher.submit(
-      { intent: "save", title: docTitle, tabs } as unknown as Record<string, string>,
+      { intent: "save", title: docTitleRef.current, tabs: tabsForSaveRef.current } as unknown as Record<string, string>,
       { method: "POST", encType: "application/json", action: `/d/${doc.id}/edit` }
     );
   }
 
-  // After a save, swap client-side "new:..." temp IDs for the real IDs the
-  // server assigned, so subsequent saves do UPDATE instead of INSERT again.
+  // Fires on every fetcher state transition (including failures where fetcher.data
+  // doesn't change — the old approach only watched fetcher.data and would get stuck
+  // in "Saving..." forever on network errors or server errors).
   useEffect(() => {
+    if (fetcher.state !== "idle") return;
+    if (!isSavingRef.current) return;
+    isSavingRef.current = false;
+    setSaving(false);
+
     const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
-    if (fetcher.state === "idle" && saving) {
-      setSaving(false);
-      setSaved(true);
+    if (data?.ok) {
+      // Only mark clean if no new edits arrived while the request was in flight.
+      // If newChangesRef is true, keep saved=false so autosave retries immediately.
+      if (!newChangesRef.current) setSaved(true);
+      // Swap client-side "new:..." temp IDs for real IDs the server assigned.
+      if (data.createdTabs?.length) {
+        const map = new Map(data.createdTabs.map((t) => [t.tempId, t]));
+        setTabs((prev) =>
+          prev.map((t) => {
+            const created = map.get(t.id);
+            return created ? { ...t, id: created.id, slug: created.slug } : t;
+          })
+        );
+        setActiveTabId((prev) => {
+          const created = map.get(prev);
+          return created ? created.id : prev;
+        });
+      }
+    } else {
+      // Request failed — mark unsaved so the autosave loop retries.
+      setSaved(false);
     }
-    if (!data?.ok || !data.createdTabs?.length) return;
-    const map = new Map(data.createdTabs.map((t) => [t.tempId, t]));
-    setTabs((prev) =>
-      prev.map((t) => {
-        const created = map.get(t.id);
-        return created ? { ...t, id: created.id, slug: created.slug } : t;
-      })
-    );
-    setActiveTabId((prev) => {
-      const created = map.get(prev);
-      return created ? created.id : prev;
-    });
-  }, [fetcher.data]);
+  }, [fetcher.state, fetcher.data]);
 
   // Auto-save logic
   useEffect(() => {
@@ -225,24 +267,34 @@ export default function EditPage() {
   }, [tabs, docTitle, saved, saving]);
 
   function handleHtmlChange(html: string) {
-    setSaved(false);
+    // Always read from refs — this function may be a stale closure captured by
+    // Monaco on mount (@monaco-editor/react never refreshes its onChange listener).
+    const currentTabId = activeTabIdRef.current;
+    const currentTabs = tabsRef.current;
+
+    // Bail if HTML hasn't actually changed — Monaco fires onChange whenever the
+    // editor value prop changes (e.g. on tab switch via setValue), causing spurious
+    // dirty marks and saves even though the user made no real edit.
+    const currentTab = currentTabs.find((t) => t.id === currentTabId);
+    if (currentTab && currentTab.html === html) return;
+
+    markDirty();
     const newDerived = deriveTitle(html);
 
-    // Decide tab-name auto-update synchronously from closure state (never inside
-    // a state-setter callback — React StrictMode double-invokes those, which
-    // causes ref mutations to run twice and corrupt the tracking state).
-    const last = tabAutoNamesRef.current.get(activeTabId);
-    const activeT = tabs.find((t) => t.id === activeTabId);
+    // Compute auto-name decision outside any state-setter callback (StrictMode
+    // double-invokes setter callbacks, which would corrupt ref mutations).
+    const last = tabAutoNamesRef.current.get(currentTabId);
+    const activeT = currentTabs.find((t) => t.id === currentTabId);
     const shouldAutoName =
       !!newDerived && last !== "\0" && (last === undefined || activeT?.name === last);
 
     if (shouldAutoName) {
-      tabAutoNamesRef.current.set(activeTabId, newDerived!);
+      tabAutoNamesRef.current.set(currentTabId, newDerived!);
     }
 
     setTabs((prev) =>
       prev.map((t) =>
-        t.id === activeTabId
+        t.id === currentTabId
           ? { ...t, html, ...(shouldAutoName ? { name: newDerived! } : {}) }
           : t
       )
@@ -266,7 +318,7 @@ export default function EditPage() {
     if (tabs.length >= MAX_TABS) return;
     const position = tabs.length;
     const name = `Tab ${position + 1}`;
-    setSaved(false);
+    markDirty();
     // Use a temp id with "new:" prefix
     const tempId = `new:${Date.now()}`;
     const slug = dedupeSlug(slugify(name), new Set(tabs.map((t) => t.slug)));
@@ -279,14 +331,14 @@ export default function EditPage() {
   }
 
   function handleReorder(reordered: TabItem[]) {
-    setSaved(false);
+    markDirty();
     setTabs((prev) =>
       reordered.map((r) => ({ ...r, html: prev.find((t) => t.id === r.id)?.html ?? "" }))
     );
   }
 
   function handleRename(id: string, name: string) {
-    setSaved(false);
+    markDirty();
     // Lock this tab — future HTML changes won't override the user's chosen name.
     tabAutoNamesRef.current.set(id, "\0");
     setTabs((prev) => prev.map((t) => t.id === id ? { ...t, name } : t));
@@ -294,7 +346,7 @@ export default function EditPage() {
 
   function handleDelete(id: string) {
     if (tabs.length <= 1) return;
-    setSaved(false);
+    markDirty();
     const filtered = tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, position: i }));
     setTabs(filtered);
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
@@ -318,7 +370,7 @@ export default function EditPage() {
           onChange={(e) => {
             const val = e.target.value;
             setDocTitle(val);
-            setSaved(false);
+            markDirty();
             // User is manually editing — lock so HTML changes stop driving it.
             docTitleLockedRef.current = true;
           }}
