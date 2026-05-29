@@ -6,7 +6,7 @@ kill_timeout = "5s"
 [build]
 
 [deploy]
-  release_command = "node -e \"require('fs').readFileSync('./db/migrations/0001_init.sql','utf8')\" || true"
+  release_command = "node db/migrate.js"
 
 [env]
   NODE_ENV = "production"
@@ -24,6 +24,13 @@ kill_timeout = "5s"
     type = "connections"
     hard_limit = 25
     soft_limit = 20
+
+  [http_service.checks]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
 
 [[vm]]
   memory = "512mb"
