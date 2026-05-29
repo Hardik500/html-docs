@@ -1,4 +1,5 @@
-import MonacoEditor from "@monaco-editor/react";
+import { useState, useEffect } from "react";
+import MonacoEditorRaw from "@monaco-editor/react";
 
 interface EditorProps {
   value: string;
@@ -7,6 +8,17 @@ interface EditorProps {
 }
 
 export default function Editor({ value, onChange, onBlur }: EditorProps) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) {
+    return <div className="h-full w-full bg-[#1e1e1e]" />;
+  }
+
+  // Handle ESM/CJS interop for SSR environments
+  // @ts-expect-error - Some environments expose the default export as an object property
+  const MonacoEditor = (typeof MonacoEditorRaw === 'object' && MonacoEditorRaw.default) ? MonacoEditorRaw.default : MonacoEditorRaw;
+
   return (
     <MonacoEditor
       height="100%"

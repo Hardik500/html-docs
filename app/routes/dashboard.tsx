@@ -15,75 +15,7 @@ interface DocRow {
 
 export const meta: Route.MetaFunction = () => [{ title: "Dashboard — html-docs" }];
 
-// Defined before Dashboard so bundlers never hoist it into the wrong chunk
-function DocCard({ doc }: { doc: DocRow }) {
-  const viewHref = doc.first_slug ? `/d/${doc.id}/${doc.first_slug}` : `/d/${doc.id}`;
-  const rawSrc   = doc.first_slug ? `/raw/${doc.id}/${doc.first_slug}` : null;
-
-  return (
-    <div className="group flex flex-col bg-gray-900/40 border border-white/5 rounded-2xl overflow-hidden hover:bg-gray-900/60 hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/10 transition-all duration-300">
-
-      {/* Thumbnail — sandboxed iframe scaled down, fully isolated from parent */}
-      <Link to={viewHref} className="block relative bg-gray-950 border-b border-white/5" style={{ height: 160 }}>
-        <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-          {rawSrc ? (
-            <iframe
-              src={rawSrc}
-              sandbox="allow-scripts"
-              loading="lazy"
-              tabIndex={-1}
-              aria-hidden
-              scrolling="no"
-              title=""
-              style={{
-                width: 960,
-                height: 600,
-                transform: "scale(0.25)",
-                transformOrigin: "top left",
-                pointerEvents: "none",
-                border: "none",
-                display: "block",
-              }}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-gray-400 text-xs bg-gray-100">
-              No content
-            </div>
-          )}
-        </div>
-        {/* Click shield — sits above the iframe so the <Link> captures the click */}
-        <div className="absolute inset-0" />
-      </Link>
-
-      {/* Card body */}
-      <div className="px-4 py-3 flex flex-col gap-1">
-        <Link
-          to={viewHref}
-          className="text-sm font-medium text-gray-200 truncate hover:text-indigo-400 transition-colors"
-          title={doc.title}
-        >
-          {doc.title}
-        </Link>
-        <div className="flex items-center justify-between">
-          <span className="text-xs text-gray-500 font-medium">
-            {new Date(doc.last_activity_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-            {doc.tab_count > 1 && ` · ${doc.tab_count} tabs`}
-          </span>
-          <div className="flex items-center gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Link to={`/d/${doc.id}/edit`} className="text-xs font-medium text-gray-400 hover:text-white transition-colors">Edit</Link>
-            <Form
-              method="post"
-              action={`/dashboard/docs/${doc.id}/delete`}
-              onSubmit={(e) => { if (!confirm(`Delete "${doc.title}"?`)) e.preventDefault(); }}
-            >
-              <button type="submit" className="text-xs font-medium text-gray-400 hover:text-red-400 transition-colors">Delete</button>
-            </Form>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+// Replaced DocCard with list item inside Dashboard
 
 export async function loader({ request }: Route.LoaderArgs) {
   const userId = await getUserId(request);
@@ -134,9 +66,11 @@ export default function Dashboard() {
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">My Documents</h1>
-          <Link to="/" className="bg-white text-black hover:bg-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg shadow-white/5 flex items-center gap-2">
-            <span>+</span> New doc
-          </Link>
+          <Form method="post" action="/docs">
+            <button type="submit" className="bg-white text-black hover:bg-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg shadow-white/5 flex items-center gap-2 cursor-pointer">
+              <span>+</span> New doc
+            </button>
+          </Form>
         </div>
 
         {docs.length === 0 ? (
@@ -145,14 +79,54 @@ export default function Dashboard() {
                <span className="text-gray-500 font-mono text-lg">&lt;/&gt;</span>
             </div>
             <p className="text-lg font-medium text-gray-200 mb-2">No documents yet</p>
-            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Paste HTML on the home page to create your first document. It takes just seconds.</p>
-            <Link to="/" className="text-white bg-indigo-600 hover:bg-indigo-500 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors">Create your first document</Link>
+            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Click "New doc" to create your first document.</p>
+            <Form method="post" action="/docs">
+              <button type="submit" className="text-white bg-indigo-600 hover:bg-indigo-500 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40">
+                Create your first document
+              </button>
+            </Form>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-            {docs.map((doc) => (
-              <DocCard key={doc.id} doc={doc} />
-            ))}
+          <div className="bg-gray-900/40 border border-white/5 rounded-2xl overflow-hidden shadow-2xl shadow-black/50">
+            <div className="grid grid-cols-12 gap-4 px-6 py-4 border-b border-white/5 bg-gray-900/80 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+              <div className="col-span-6 sm:col-span-5">Name</div>
+              <div className="hidden sm:block col-span-3">Last Updated</div>
+              <div className="hidden sm:block col-span-2 text-right">Views</div>
+              <div className="col-span-6 sm:col-span-2 text-right">Actions</div>
+            </div>
+            <div className="divide-y divide-white/5">
+              {docs.map((doc) => {
+                const viewHref = doc.first_slug ? `/d/${doc.id}/${doc.first_slug}` : `/d/${doc.id}`;
+                return (
+                  <div key={doc.id} className="group grid grid-cols-12 gap-4 px-6 py-4 items-center hover:bg-white/5 transition-colors">
+                    <div className="col-span-6 sm:col-span-5 flex flex-col min-w-0">
+                      <Link to={viewHref} className="text-sm font-medium text-gray-200 truncate hover:text-indigo-400 transition-colors">
+                        {doc.title}
+                      </Link>
+                      <span className="text-xs text-gray-500 mt-0.5">{doc.tab_count} {doc.tab_count === 1 ? "tab" : "tabs"}</span>
+                    </div>
+                    <div className="hidden sm:flex col-span-3 items-center">
+                      <span className="text-sm text-gray-400">
+                        {new Date(doc.last_activity_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    </div>
+                    <div className="hidden sm:flex col-span-2 justify-end items-center">
+                      <span className="text-sm text-gray-400 bg-gray-800/50 px-2 py-0.5 rounded-md border border-white/5">{doc.view_count}</span>
+                    </div>
+                    <div className="col-span-6 sm:col-span-2 flex items-center justify-end gap-3">
+                      <Link to={`/d/${doc.id}/edit`} className="text-sm font-medium text-gray-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-md">Edit</Link>
+                      <Form
+                        method="post"
+                        action={`/dashboard/docs/${doc.id}/delete`}
+                        onSubmit={(e) => { if (!confirm(`Delete "${doc.title}"?`)) e.preventDefault(); }}
+                      >
+                        <button type="submit" className="text-sm font-medium text-gray-400 hover:text-red-400 transition-colors bg-white/5 hover:bg-red-500/10 px-3 py-1.5 rounded-md">Delete</button>
+                      </Form>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

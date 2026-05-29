@@ -144,22 +144,30 @@ export default function EditPage() {
   const [activeTabId, setActiveTabId] = useState(initialTabs[0]?.id ?? "");
   const [previewHtml, setPreviewHtml] = useState(initialTabs[0]?.html ?? "");
   const [saved, setSaved] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [layout, setLayout] = useState<"split" | "code" | "preview">("split");
+
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
   function save() {
+    setSaving(true);
     fetcher.submit(
       { intent: "save", title: docTitle, tabs } as unknown as Record<string, string>,
-      { method: "POST", encType: "application/json" }
+      { method: "POST", encType: "application/json", action: `/d/${doc.id}/edit` }
     );
-    setSaved(true);
   }
 
   // After a save, swap client-side "new:..." temp IDs for the real IDs the
   // server assigned, so subsequent saves do UPDATE instead of INSERT again.
   useEffect(() => {
     const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
+    if (fetcher.state === "idle" && saving) {
+      setSaving(false);
+      setSaved(true);
+    }
     if (!data?.ok || !data.createdTabs?.length) return;
     const map = new Map(data.createdTabs.map((t) => [t.tempId, t]));
     setTabs((prev) =>
@@ -174,11 +182,18 @@ export default function EditPage() {
     });
   }, [fetcher.data]);
 
-  // Auto-save every 30s
+  // Auto-save logic
   useEffect(() => {
-    const interval = setInterval(() => { if (!saved) save(); }, 30_000);
-    return () => clearInterval(interval);
-  });
+    if (!saved && !saving) {
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+      autoSaveRef.current = setTimeout(() => {
+        save();
+      }, 1000); // 1s debounce
+    }
+    return () => {
+      if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
+    };
+  }, [tabs, docTitle, saved, saving]);
 
   function handleHtmlChange(html: string) {
     setSaved(false);
@@ -247,13 +262,19 @@ export default function EditPage() {
           placeholder="Untitled document"
         />
         <div className="flex items-center gap-3 shrink-0">
-          {!saved && <span className="text-xs font-medium text-yellow-500/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500/80"></span>Unsaved</span>}
-          <button onClick={save} className="text-xs font-medium bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-md transition-colors shadow-sm shadow-indigo-500/20">
-            Save
-          </button>
+          {!saved && !saving && <span className="text-xs font-medium text-yellow-500/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500/80"></span>Unsaved</span>}
+          {saving && <span className="text-xs font-medium text-indigo-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>Saving...</span>}
+          {saved && !saving && <span className="text-xs font-medium text-gray-500 flex items-center gap-1">Saved</span>}
+
+          <div className="hidden sm:flex bg-gray-900 rounded border border-white/5 p-0.5 ml-2">
+            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "code" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>Code</button>
+            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "split" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>Split</button>
+            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "preview" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>View</button>
+          </div>
+
           <a href={viewUrl} target="_blank" rel="noopener noreferrer"
-            className="text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5">
-            View <span className="text-gray-400">↗</span>
+            className="hidden sm:flex text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2">
+            Publish <span className="text-gray-400">↗</span>
           </a>
           <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${viewUrl}`)}
             className="text-xs font-medium text-gray-400 hover:text-white px-2 py-1.5 rounded-md transition-colors">
@@ -268,34 +289,49 @@ export default function EditPage() {
       </header>
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-        <TabSidebar
-          tabs={tabs}
-          activeTabId={activeTabId}
-          onSelect={handleTabSelect}
-          onReorder={handleReorder}
-          onAdd={handleAddTab}
-          onRename={handleRename}
-          onDelete={handleDelete}
-        />
+      <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">
+        <div className="hidden sm:block h-full shrink-0">
+          <TabSidebar
+            tabs={tabs}
+            activeTabId={activeTabId}
+            onSelect={handleTabSelect}
+            onReorder={handleReorder}
+            onAdd={handleAddTab}
+            onRename={handleRename}
+            onDelete={handleDelete}
+          />
+        </div>
+
+        {/* Mobile Tab Bar */}
+        <div className="sm:hidden border-b border-white/5 bg-gray-950 flex overflow-x-auto hide-scrollbar">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => handleTabSelect(t.id)} className={`px-4 py-3 text-sm font-medium whitespace-nowrap ${t.id === activeTabId ? 'text-white border-b-2 border-indigo-500' : 'text-gray-500'}`}>
+              {t.name}
+            </button>
+          ))}
+        </div>
 
         {/* Monaco editor */}
-        <div className="flex-1 overflow-hidden bg-[#1e1e1e]">
-          <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading editor…</div>}>
-            <Editor
-              value={activeTab?.html ?? ""}
-              onChange={handleHtmlChange}
-              onBlur={save}
-            />
-          </Suspense>
-        </div>
+        {(layout === "split" || layout === "code") && (
+          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-white/5">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading editor…</div>}>
+              <Editor
+                value={activeTab?.html ?? ""}
+                onChange={handleHtmlChange}
+                onBlur={save}
+              />
+            </Suspense>
+          </div>
+        )}
 
         {/* Preview */}
-        <div className="flex-1 overflow-hidden border-l border-white/5 bg-white">
-          <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading…</div>}>
-            <PreviewIframe html={previewHtml} />
-          </Suspense>
-        </div>
+        {(layout === "split" || layout === "preview") && (
+          <div className={`flex-1 overflow-hidden bg-white flex flex-col ${layout === "split" ? "sm:border-l border-white/10" : ""}`}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading…</div>}>
+              <PreviewIframe html={previewHtml} />
+            </Suspense>
+          </div>
+        )}
       </div>
     </div>
   );

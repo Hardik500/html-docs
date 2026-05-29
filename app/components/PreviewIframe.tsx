@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 interface PreviewIframeProps {
   html: string;
+  title?: string;
 }
 
 const PREVIEW_CSP = [
@@ -25,29 +26,47 @@ function injectCsp(html: string): string {
   return meta + "\n" + html;
 }
 
-export default function PreviewIframe({ html }: PreviewIframeProps) {
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [blobUrl, setBlobUrl] = useState<string>("");
+export default function PreviewIframe({ html, title = "Preview" }: PreviewIframeProps) {
+  const [frames, setFrames] = useState([{ id: 0, html }]);
+  const nextId = useRef(1);
 
+  // Double-buffering: when html changes, add a new hidden iframe.
+  // When it finishes loading, remove all older iframes so it becomes visible.
   useEffect(() => {
-    const injected = injectCsp(html);
-    const blob = new Blob([injected], { type: "text/html" });
-    const url = URL.createObjectURL(blob);
-    setBlobUrl(url);
-
-    return () => {
-      URL.revokeObjectURL(url);
-    };
+    setFrames((prev) => {
+      if (prev[prev.length - 1].html === html) return prev;
+      return [...prev, { id: nextId.current++, html }];
+    });
   }, [html]);
 
+  const handleLoad = (id: number) => {
+    setFrames((prev) => {
+      const index = prev.findIndex((f) => f.id === id);
+      if (index === -1) return prev;
+      return prev.slice(index);
+    });
+  };
+
   return (
-    <iframe
-      ref={iframeRef}
-      key={blobUrl}
-      src={blobUrl}
-      sandbox="allow-scripts"
-      className="w-full h-full border-0 bg-white"
-      title="Preview"
-    />
+    <div className="relative w-full h-full bg-white">
+      {frames.map((frame, i) => {
+        // Only the oldest frame in the list is visible. Newer frames are loading in the background.
+        const isVisible = i === 0;
+        return (
+          <iframe
+            key={frame.id}
+            srcDoc={injectCsp(frame.html)}
+            onLoad={() => handleLoad(frame.id)}
+            sandbox="allow-scripts"
+            title={title}
+            className="absolute inset-0 w-full h-full border-0"
+            style={{
+              opacity: isVisible ? 1 : 0,
+              visibility: isVisible ? "visible" : "hidden",
+            }}
+          />
+        );
+      })}
+    </div>
   );
 }

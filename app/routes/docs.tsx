@@ -17,6 +17,10 @@ function getClientIp(request: Request): string {
   );
 }
 
+export async function loader() {
+  return redirect("/");
+}
+
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== "POST") {
     throw new Response("Method not allowed", { status: 405 });
@@ -39,11 +43,11 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const formData = await request.formData();
-  const html = String(formData.get("html") ?? "").trim();
+  let html = String(formData.get("html") ?? "").trim();
   const titleInput = String(formData.get("title") ?? "").trim();
 
   if (!html) {
-    throw new Response("HTML is required", { status: 400 });
+    html = `<!DOCTYPE html>\n<html>\n<head>\n  <title>Untitled Document</title>\n</head>\n<body>\n  \n</body>\n</html>`;
   }
   if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) {
     throw new Response("HTML exceeds 1 MB limit", { status: 413 });
