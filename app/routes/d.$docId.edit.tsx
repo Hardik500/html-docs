@@ -5,7 +5,7 @@ import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
 import { newTabId, newEditToken } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
-import { extractTitle } from "~/lib/titleExtract";
+import { extractTitle, deriveTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 
 const Editor = lazy(() => import("~/components/Editor"));
@@ -41,12 +41,31 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     [docId]
   );
 
+  // Derive better names server-side so the first render is already correct —
+  // no client-side flash or "reload to see name" UX.
+  const GENERIC = /^(untitled.*|tab \d+)$/i;
+  let titleDerived = false;
+
+  const docTitle = (() => {
+    if (doc.title && !GENERIC.test(doc.title.trim())) return doc.title;
+    const derived = extractTitle(tabsResult.rows[0]?.html ?? "", "");
+    if (derived) { titleDerived = true; return derived; }
+    return doc.title;
+  })();
+
+  const tabs = tabsResult.rows.map((tab) => {
+    if (!GENERIC.test(tab.name.trim())) return tab;
+    const derived = extractTitle(tab.html, "");
+    if (derived) { titleDerived = true; return { ...tab, name: derived }; }
+    return tab;
+  });
+
   return {
-    // editToken is returned for the in-memory claim flow only — never placed in a URL.
-    doc: { id: doc.id, title: doc.title, editToken: doc.edit_token },
-    tabs: tabsResult.rows,
+    doc: { id: doc.id, title: docTitle, editToken: doc.edit_token },
+    tabs,
     userId: userId ?? null,
     isOwner: Boolean(userId && userId === doc.owner_user_id),
+    titleDerived,
   };
 }
 
@@ -136,19 +155,29 @@ export const meta: Route.MetaFunction = ({ data }: { data: ReturnType<typeof loa
 ];
 
 export default function EditPage() {
-  const { doc, tabs: initialTabs, userId, isOwner } = useLoaderData<typeof loader>();
+  const { doc, tabs: initialTabs, userId, isOwner, titleDerived } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
 
   const [docTitle, setDocTitle] = useState(doc.title);
   const [tabs, setTabs] = useState<(TabItem & { html: string })[]>(initialTabs);
   const [activeTabId, setActiveTabId] = useState(initialTabs[0]?.id ?? "");
   const [previewHtml, setPreviewHtml] = useState(initialTabs[0]?.html ?? "");
-  const [saved, setSaved] = useState(true);
+  // If the loader derived a better title server-side, it hasn't been persisted yet.
+  const [saved, setSaved] = useState(!titleDerived);
   const [saving, setSaving] = useState(false);
   const [layout, setLayout] = useState<"split" | "code" | "preview">("split");
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When true, user has manually edited the doc title — HTML changes stop driving it.
+  const docTitleLockedRef = useRef(false);
+
+  // Per-tab auto-name tracking. Map<tabId, lastAutoDerivedName | "\0" (locked)>.
+  // A tab is "locked" once the user renames it manually.
+  const tabAutoNamesRef = useRef<Map<string, string>>(
+    new Map(initialTabs.map((t) => [t.id, t.name]))
+  );
 
   const activeTab = tabs.find((t) => t.id === activeTabId);
 
@@ -197,7 +226,33 @@ export default function EditPage() {
 
   function handleHtmlChange(html: string) {
     setSaved(false);
-    setTabs((prev) => prev.map((t) => t.id === activeTabId ? { ...t, html } : t));
+    const newDerived = deriveTitle(html);
+
+    // Decide tab-name auto-update synchronously from closure state (never inside
+    // a state-setter callback — React StrictMode double-invokes those, which
+    // causes ref mutations to run twice and corrupt the tracking state).
+    const last = tabAutoNamesRef.current.get(activeTabId);
+    const activeT = tabs.find((t) => t.id === activeTabId);
+    const shouldAutoName =
+      !!newDerived && last !== "\0" && (last === undefined || activeT?.name === last);
+
+    if (shouldAutoName) {
+      tabAutoNamesRef.current.set(activeTabId, newDerived!);
+    }
+
+    setTabs((prev) =>
+      prev.map((t) =>
+        t.id === activeTabId
+          ? { ...t, html, ...(shouldAutoName ? { name: newDerived! } : {}) }
+          : t
+      )
+    );
+
+    // If tab name auto-updated AND doc title hasn't been manually locked, sync it.
+    if (shouldAutoName && !docTitleLockedRef.current) {
+      setDocTitle(newDerived!);
+    }
+
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => setPreviewHtml(html), 300);
   }
@@ -216,6 +271,8 @@ export default function EditPage() {
     const tempId = `new:${Date.now()}`;
     const slug = dedupeSlug(slugify(name), new Set(tabs.map((t) => t.slug)));
     const html = `<!DOCTYPE html>\n<html>\n<head><title>${name}</title></head>\n<body>\n</body>\n</html>`;
+    // Register new tab for auto-naming (name matches the generic title in the HTML).
+    tabAutoNamesRef.current.set(tempId, name);
     setTabs((prev) => [...prev, { id: tempId, slug, name, position, html }]);
     setActiveTabId(tempId);
     setPreviewHtml(html);
@@ -230,6 +287,8 @@ export default function EditPage() {
 
   function handleRename(id: string, name: string) {
     setSaved(false);
+    // Lock this tab — future HTML changes won't override the user's chosen name.
+    tabAutoNamesRef.current.set(id, "\0");
     setTabs((prev) => prev.map((t) => t.id === id ? { ...t, name } : t));
   }
 
@@ -256,7 +315,13 @@ export default function EditPage() {
         <div className="h-4 w-px bg-white/10 shrink-0"></div>
         <input
           value={docTitle}
-          onChange={(e) => { setDocTitle(e.target.value); setSaved(false); }}
+          onChange={(e) => {
+            const val = e.target.value;
+            setDocTitle(val);
+            setSaved(false);
+            // User is manually editing — lock so HTML changes stop driving it.
+            docTitleLockedRef.current = true;
+          }}
           onBlur={save}
           className="flex-1 bg-transparent text-gray-200 text-sm font-medium focus:outline-none border-b border-transparent focus:border-indigo-500/50 px-1 min-w-0 transition-colors placeholder-gray-600"
           placeholder="Untitled document"
