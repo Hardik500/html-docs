@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import MonacoEditorRaw from "@monaco-editor/react";
+import MonacoEditorRaw, { type OnChange, type OnMount } from "@monaco-editor/react";
 
 interface EditorProps {
   value: string;
@@ -36,12 +36,12 @@ export default function Editor({ value, onChange, onBlur }: EditorProps) {
         insertSpaces: true,
         formatOnPaste: true,
       }}
-      onChange={(val) => onChange(val ?? "")}
-      onMount={(editor) => {
+      onChange={((val: string | undefined) => onChange(val ?? "")) as OnChange}
+      onMount={((editor) => {
         editor.onDidBlurEditorText(() => {
           onBlur?.();
         });
-      }}
+      }) as OnMount}
     />
   );
 }

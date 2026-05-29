@@ -40,10 +40,16 @@ export default function PreviewIframe({ html, title = "Preview" }: PreviewIframe
   }, [html]);
 
   const handleLoad = (id: number) => {
-    setFrames((prev) => {
-      const index = prev.findIndex((f) => f.id === id);
-      if (index === -1) return prev;
-      return prev.slice(index);
+    // Double-rAF: wait until browser has painted the new frame before swap.
+    // Without this, onLoad fires before compositing → white flash.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setFrames((prev) => {
+          const index = prev.findIndex((f) => f.id === id);
+          if (index === -1) return prev;
+          return prev.slice(index);
+        });
+      });
     });
   };
 
@@ -62,7 +68,11 @@ export default function PreviewIframe({ html, title = "Preview" }: PreviewIframe
             className="absolute inset-0 w-full h-full border-0"
             style={{
               opacity: isVisible ? 1 : 0,
-              visibility: isVisible ? "visible" : "hidden",
+              // Do NOT use visibility:hidden — it stops the browser from
+              // compositing the background frame, causing a white flash on swap.
+              // pointer-events:none keeps hidden frames inert instead.
+              pointerEvents: isVisible ? "auto" : "none",
+              zIndex: isVisible ? 1 : 0,
             }}
           />
         );
