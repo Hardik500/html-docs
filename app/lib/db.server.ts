@@ -19,7 +19,7 @@ if (process.env.NODE_ENV === "production") {
       process.env.DATABASE_URL?.includes("localhost") ||
       process.env.DATABASE_URL?.includes(".internal")
         ? false
-        : { rejectUnauthorized: true },
+        : { rejectUnauthorized: false },
   });
 } else {
   if (!global.__pgPool) {

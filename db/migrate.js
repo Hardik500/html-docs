@@ -10,7 +10,7 @@ const isInternal =
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: isInternal ? false : { rejectUnauthorized: true },
+  ssl: isInternal ? false : { rejectUnauthorized: false },
 });
 
 // Ensure the tracking table exists
