@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Form, Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
-import { getUserId } from "~/lib/auth.server";
+import { getUser } from "~/lib/auth.server";
 import { Modal } from "~/components/Modal";
 
 interface DocRow {
@@ -21,35 +21,30 @@ export const meta: Route.MetaFunction = () => [{ title: "Dashboard — html-docs
 // Replaced DocCard with list item inside Dashboard
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const userId = await getUserId(request);
-  if (!userId) return redirect("/auth/magic");
+  const user = await getUser(request);
+  if (!user) return redirect("/auth/magic");
 
-  // Single query: correlated subquery for position-ordered first tab slug — no N+1
-  const [docsResult, userResult] = await Promise.all([
-    query<DocRow & { html: string }>(
-      `SELECT d.id, d.title, d.view_count, d.last_activity_at, d.created_at,
-              COUNT(t.id)::int AS tab_count,
-              (SELECT t2.slug FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_slug,
-              (SELECT t2.html FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
-       FROM docs d
-       LEFT JOIN tabs t ON t.doc_id = d.id
-       WHERE d.owner_user_id = $1
-       GROUP BY d.id
-       ORDER BY d.last_activity_at DESC
-       LIMIT 100`,
-      [userId]
-    ),
-    query<{ email: string }>("SELECT email FROM users WHERE id = $1", [userId]),
-  ]);
+  const docsResult = await query<DocRow & { html: string }>(
+    `SELECT d.id, d.title, d.view_count, d.last_activity_at, d.created_at,
+            COUNT(t.id)::int AS tab_count,
+            (SELECT t2.slug FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_slug,
+            (SELECT t2.html FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
+     FROM docs d
+     LEFT JOIN tabs t ON t.doc_id = d.id
+     WHERE d.owner_user_id = $1
+     GROUP BY d.id
+     ORDER BY d.last_activity_at DESC
+     LIMIT 100`,
+    [user.id]
+  );
 
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const docs = docsResult.rows.map((doc) => {
     const d = new Date(doc.last_activity_at);
-    const formatted = `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
-    return { ...doc, last_activity_at: formatted };
+    return { ...doc, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
   });
 
-  return { docs, email: userResult.rows[0]?.email ?? "" };
+  return { docs, email: user.email };
 }
 
 export default function Dashboard() {

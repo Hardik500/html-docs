@@ -6,5 +6,3 @@ const alphanumeric =
 export const newDocId = customAlphabet(alphanumeric, 12);
 export const newTabId = customAlphabet(alphanumeric, 12);
 export const newEditToken = customAlphabet(alphanumeric, 24);
-export const newSessionId = customAlphabet(alphanumeric, 32);
-export const newMagicToken = customAlphabet(alphanumeric, 40);

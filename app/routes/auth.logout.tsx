@@ -1,8 +1,12 @@
+import { redirect } from "react-router";
 import type { Route } from "./+types/auth.logout";
-import { destroyUserSession } from "~/lib/auth.server";
+import { createSupabaseServerClient } from "~/lib/supabase.server";
 
 export async function action({ request }: Route.ActionArgs) {
-  return destroyUserSession(request);
+  const responseHeaders = new Headers();
+  const { supabase } = createSupabaseServerClient(request, responseHeaders);
+  await supabase.auth.signOut();
+  return redirect("/", { headers: responseHeaders });
 }
 
 export async function loader() {

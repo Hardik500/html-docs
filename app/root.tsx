@@ -9,19 +9,25 @@ import {
 
 import type { Route } from "./+types/root";
 import { APP_CSP } from "./lib/csp.server";
+import { createSupabaseServerClient } from "./lib/supabase.server";
 import "./app.css";
 
-export async function loader(_: Route.LoaderArgs) {
-  return new Response(null, {
-    headers: {
-      "Content-Security-Policy": APP_CSP,
-      "X-Frame-Options": "DENY",
-      "X-Content-Type-Options": "nosniff",
-      "Referrer-Policy": "strict-origin-when-cross-origin",
-      "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-      "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
-    },
+export async function loader({ request }: Route.LoaderArgs) {
+  const responseHeaders = new Headers({
+    "Content-Security-Policy": APP_CSP,
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   });
+
+  // Proactively refresh Supabase session if the access token is near expiry.
+  // Any new tokens are written into responseHeaders via the cookie setAll handler.
+  const { supabase } = createSupabaseServerClient(request, responseHeaders);
+  await supabase.auth.getUser();
+
+  return new Response(null, { headers: responseHeaders });
 }
 
 export const links: Route.LinksFunction = () => [

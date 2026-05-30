@@ -25,7 +25,7 @@ await pool.query(`
 const applied = await pool.query("SELECT filename FROM schema_migrations");
 const appliedSet = new Set(applied.rows.map((r) => r.filename));
 
-const migrations = ["0001_init.sql", "0002_indexes_cleanup.sql"];
+const migrations = ["0001_init.sql", "0002_indexes_cleanup.sql", "0003_supabase_auth.sql"];
 for (const file of migrations) {
   if (appliedSet.has(file)) {
     console.log(`Skipping (already applied): ${file}`);

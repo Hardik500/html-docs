@@ -8,7 +8,7 @@ export default [
   route("/d/:docId/edit", "routes/d.$docId.edit.tsx"),
   route("/raw/:docId/:tabSlug", "routes/raw.$docId.$tabSlug.tsx"),
   route("/auth/magic", "routes/auth.magic.tsx"),
-  route("/auth/magic/:token", "routes/auth.magic.$token.tsx"),
+  route("/auth/callback", "routes/auth.callback.tsx"),
   route("/auth/claim", "routes/auth.claim.tsx"),
   route("/auth/logout", "routes/auth.logout.tsx"),
   route("/dashboard", "routes/dashboard.tsx"),

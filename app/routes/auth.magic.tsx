@@ -1,7 +1,6 @@
 import { Form, useActionData, Link } from "react-router";
 import type { Route } from "./+types/auth.magic";
-import { query } from "~/lib/db.server";
-import { newMagicToken } from "~/lib/ids";
+import { createSupabaseServerClient } from "~/lib/supabase.server";
 import { checkMagicEmailRate, checkMagicIpRate } from "~/lib/ratelimit.server";
 import { z } from "zod";
 
@@ -27,46 +26,23 @@ export async function action({ request }: Route.ActionArgs) {
     checkMagicEmailRate(email),
     checkMagicIpRate(ip),
   ]);
-
-  if (!emailOk || !ipOk) {
+  if (!emailOk || !ipOk)
     return { error: "Too many requests. Please try again later." };
-  }
 
-  const token = newMagicToken();
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 min
-
-  await query(
-    "INSERT INTO magic_tokens (token, email, expires_at) VALUES ($1, $2, $3)",
-    [token, email, expiresAt]
-  );
-
+  const { supabase } = createSupabaseServerClient(request);
   const appUrl = process.env.APP_URL || "http://localhost:5173";
-  const magicLink = `${appUrl}/auth/magic/${token}`;
 
-  // In dev without a Resend key, log the link to the terminal so you can
-  // test the auth flow without setting up an email provider.
-  if (!process.env.RESEND_API_KEY || process.env.NODE_ENV !== "production") {
-    console.log("\n🔗 [DEV] Magic link (no email sent):");
-    console.log(`   ${magicLink}\n`);
-    return { success: true };
-  }
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: `${appUrl}/auth/callback`,
+      shouldCreateUser: true,
+    },
+  });
 
-  try {
-    const { Resend } = await import("resend");
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    await resend.emails.send({
-      from: process.env.EMAIL_FROM || "noreply@html-docs.app",
-      to: email,
-      subject: "Sign in to html-docs",
-      html: `
-        <p>Click the link below to sign in to html-docs. This link expires in 15 minutes.</p>
-        <p><a href="${magicLink}">${magicLink}</a></p>
-        <p>If you didn't request this, you can ignore this email.</p>
-      `,
-    });
-  } catch (err) {
-    console.error("Failed to send magic link:", err);
-    return { error: "Failed to send email. Please try again." };
+  if (error) {
+    console.error("[auth] signInWithOtp error:", error.message);
+    return { error: "Failed to send sign-in email. Please try again." };
   }
 
   return { success: true };
