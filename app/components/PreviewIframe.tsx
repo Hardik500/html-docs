@@ -17,8 +17,8 @@ const CROSSFADE_MS = 150;
 
 const PREVIEW_CSP = [
   "default-src 'none'",
-  "script-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net",
-  "style-src 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net",
+  "script-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.skypack.dev",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
   "font-src https://fonts.gstatic.com data:",
   "img-src https: data:",
   "connect-src 'none'",
