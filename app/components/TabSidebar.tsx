@@ -74,17 +74,21 @@ function SortableTab({
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        backgroundColor: isActive ? "#efe9de" : undefined,
+        color: isActive ? "#141413" : "#6c6a64",
+      }}
       className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm font-medium transition-colors ${
-        isActive ? "bg-white/10 text-white shadow-sm" : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
+        isActive ? "shadow-sm" : "hover:bg-[#efe9de] hover:text-[#252523]"
       }`}
     >
-      {/* Drag handle — hidden while editing to avoid accidental drags */}
       {!editing && (
         <span
           {...attributes}
           {...listeners}
-          className="text-gray-600 group-hover:text-gray-400 cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ color: "#8e8b82" }}
           aria-label="Drag to reorder"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
@@ -99,7 +103,8 @@ function SortableTab({
           onBlur={commitRename}
           onKeyDown={handleKeyDown}
           maxLength={200}
-          className="flex-1 bg-white/10 text-white text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-indigo-500 min-w-0"
+          className="flex-1 text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 min-w-0 border"
+          style={{ backgroundColor: "white", color: "#141413", borderColor: "#e6dfd8", "--tw-ring-color": "#cc785c" } as React.CSSProperties}
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
@@ -116,7 +121,10 @@ function SortableTab({
         <div className="hidden group-hover:flex items-center gap-0.5">
           <button
             onClick={startEditing}
-            className="text-gray-500 hover:text-white p-1 rounded hover:bg-white/10 transition-colors"
+            className="p-1 rounded transition-colors"
+            style={{ color: "#8e8b82" }}
+            onMouseEnter={e => { e.currentTarget.style.color = "#141413"; e.currentTarget.style.backgroundColor = "#e8e0d2"; }}
+            onMouseLeave={e => { e.currentTarget.style.color = "#8e8b82"; e.currentTarget.style.backgroundColor = ""; }}
             title="Rename"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -124,7 +132,10 @@ function SortableTab({
           {canDelete && (
             <button
               onClick={() => onDelete(tab.id)}
-              className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-400/10 transition-colors"
+              className="p-1 rounded transition-colors"
+              style={{ color: "#8e8b82" }}
+              onMouseEnter={e => { e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.backgroundColor = "#fef2f2"; }}
+              onMouseLeave={e => { e.currentTarget.style.color = "#8e8b82"; e.currentTarget.style.backgroundColor = ""; }}
               title="Delete tab"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -176,15 +187,18 @@ export default function TabSidebar({
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 border-r border-white/5 w-56 shrink-0 z-10">
-      <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
-        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">
+    <div className="flex flex-col h-full w-56 shrink-0 z-10 border-r" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
+      <div className="px-4 py-3 flex items-center justify-between border-b" style={{ borderColor: "#e6dfd8" }}>
+        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#8e8b82" }}>
           Files
         </span>
         <button
           onClick={onAdd}
           disabled={tabs.length >= 20}
-          className="text-xs font-medium text-indigo-400 hover:text-indigo-300 disabled:opacity-40 transition-colors flex items-center gap-1 bg-indigo-500/10 hover:bg-indigo-500/20 px-2 py-1 rounded"
+          className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded"
+          style={{ color: "#cc785c", backgroundColor: "rgba(204,120,92,0.1)" }}
+          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(204,120,92,0.2)")}
+          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "rgba(204,120,92,0.1)")}
           title="Add tab"
         >
           <span>+</span> Add

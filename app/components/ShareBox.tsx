@@ -26,7 +26,10 @@ export default function ShareBox({ docId, tabSlug }: ShareBoxProps) {
   return (
     <button
       onClick={handleCopy}
-      className="text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+      className="text-xs font-medium px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border"
+      style={{ backgroundColor: "#efe9de", borderColor: "#e6dfd8", color: "#3d3d3a" }}
+      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#e8e0d2")}
+      onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#efe9de")}
       title="Copy share link"
     >
       {copied ? "✓ Copied!" : "Share"}

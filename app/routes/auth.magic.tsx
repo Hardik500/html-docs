@@ -61,24 +61,24 @@ export default function MagicLinkPage() {
   const errorMessage = ('error' in (actionData ?? {}) ? (actionData as { error: string }).error : null) ?? urlError;
 
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center px-4">
+    <main className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
       <div className="w-full max-w-md">
-        <Link to="/" className="block text-sm font-semibold text-indigo-400 mb-8 hover:text-indigo-300 transition-colors">
+        <Link to="/" className="block text-sm font-semibold mb-8 transition-colors" style={{ color: "#cc785c" }}>
           ← html-docs
         </Link>
-        <h1 className="text-2xl font-bold mb-2">Sign in</h1>
-        <p className="text-gray-400 text-sm mb-6">
+        <h1 className="text-2xl font-bold mb-2" style={{ color: "#141413" }}>Sign in</h1>
+        <p className="text-sm mb-6" style={{ color: "#6c6a64" }}>
           Enter your email and we'll send you a magic link to sign in.
         </p>
 
         {'success' in (actionData ?? {}) ? (
-          <div className="bg-green-900/30 border border-green-700 rounded-lg p-4 text-green-300 text-sm">
+          <div className="rounded-lg p-4 text-sm border" style={{ backgroundColor: "#e6f4ea", borderColor: "#86efac", color: "#166534" }}>
             Check your email! A sign-in link has been sent.
           </div>
         ) : (
           <Form method="post" className="space-y-4">
             {errorMessage && (
-              <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-300 text-sm">
+              <div className="rounded-lg p-3 text-sm border" style={{ backgroundColor: "#fef2f2", borderColor: "#fca5a5", color: "#991b1b" }}>
                 {errorMessage}
               </div>
             )}
@@ -87,11 +87,15 @@ export default function MagicLinkPage() {
               name="email"
               required
               placeholder="you@example.com"
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2.5 text-sm text-gray-100 placeholder-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 border transition-colors"
+              style={{ backgroundColor: "white", borderColor: "#e6dfd8", color: "#141413" }}
             />
             <button
               type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2.5 rounded-lg transition-colors"
+              className="w-full text-white font-medium py-2.5 rounded-lg transition-colors"
+              style={{ backgroundColor: "#cc785c" }}
+              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#a9583e")}
+              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#cc785c")}
             >
               Send magic link
             </button>

@@ -63,43 +63,54 @@ export default function Dashboard() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-950 text-gray-100">
-      <nav className="border-b border-white/5 bg-gray-950/50 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-10">
+    <main className="min-h-screen" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
+      <nav className="backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-10 border-b" style={{ backgroundColor: "rgba(250,249,245,0.85)", borderColor: "#e6dfd8" }}>
         <div className="flex items-center gap-2">
           <Link to="/" className="flex items-center gap-2 group">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
+            <div className="w-6 h-6 rounded-md flex items-center justify-center shadow-lg transition-all" style={{ background: "linear-gradient(to bottom right, #cc785c, #a9583e)" }}>
               <span className="text-white font-bold text-xs font-mono">&lt;/&gt;</span>
             </div>
-            <span className="font-semibold text-sm tracking-wide text-gray-200 group-hover:text-white transition-colors">html-docs</span>
+            <span className="font-semibold text-sm tracking-wide transition-colors" style={{ color: "#252523" }}>html-docs</span>
           </Link>
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-gray-400">{email}</span>
+          <span className="text-sm font-medium" style={{ color: "#6c6a64" }}>{email}</span>
           <Form method="post" action="/auth/logout">
-            <button type="submit" className="text-sm font-medium text-gray-400 hover:text-white transition-colors">Sign out</button>
+            <button type="submit" className="text-sm font-medium transition-colors" style={{ color: "#6c6a64" }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
+            >Sign out</button>
           </Form>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex items-center justify-between mb-8">
-          <h1 className="text-3xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">My Documents</h1>
+          <h1 className="text-3xl font-bold tracking-tight" style={{ color: "#141413" }}>My Documents</h1>
           <Form method="post" action="/docs">
-            <button type="submit" className="bg-white text-black hover:bg-gray-200 text-sm font-medium px-4 py-2 rounded-lg transition-colors shadow-lg shadow-white/5 flex items-center gap-2 cursor-pointer">
+            <button type="submit" className="text-sm font-medium px-4 py-2 rounded-lg transition-colors flex items-center gap-2 cursor-pointer text-white"
+              style={{ backgroundColor: "#cc785c" }}
+              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#a9583e")}
+              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#cc785c")}
+            >
               <span>+</span> New doc
             </button>
           </Form>
         </div>
 
         {docs.length === 0 ? (
-          <div className="text-center py-32 border border-dashed border-white/10 rounded-2xl bg-gray-900/20">
-            <div className="w-12 h-12 bg-gray-900 rounded-xl flex items-center justify-center mx-auto mb-4 border border-white/5 shadow-inner">
-               <span className="text-gray-500 font-mono text-lg">&lt;/&gt;</span>
+          <div className="text-center py-32 border border-dashed rounded-2xl" style={{ borderColor: "#e6dfd8", backgroundColor: "#f5f0e8" }}>
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-4 border shadow-inner" style={{ backgroundColor: "#efe9de", borderColor: "#e6dfd8" }}>
+               <span className="font-mono text-lg" style={{ color: "#8e8b82" }}>&lt;/&gt;</span>
             </div>
-            <p className="text-lg font-medium text-gray-200 mb-2">No documents yet</p>
-            <p className="text-sm text-gray-500 mb-6 max-w-sm mx-auto">Click "New doc" to create your first document.</p>
+            <p className="text-lg font-medium mb-2" style={{ color: "#252523" }}>No documents yet</p>
+            <p className="text-sm mb-6 max-w-sm mx-auto" style={{ color: "#8e8b82" }}>Click "New doc" to create your first document.</p>
             <Form method="post" action="/docs">
-              <button type="submit" className="text-white bg-indigo-600 hover:bg-indigo-500 text-sm font-medium px-5 py-2.5 rounded-lg transition-colors shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/40">
+              <button type="submit" className="text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+                style={{ backgroundColor: "#cc785c" }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#a9583e")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#cc785c")}
+              >
                 Create your first document
               </button>
             </Form>
@@ -111,10 +122,10 @@ export default function Dashboard() {
               const editHref = `/d/${doc.id}/edit`;
 
               return (
-                <div key={doc.id} className={`group flex flex-col bg-gray-900/40 border border-white/5 rounded-xl shadow-xl hover:shadow-2xl hover:border-white/10 transition-all hover:-translate-y-1 relative ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
+                <div key={doc.id} className={`group flex flex-col rounded-xl shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 relative border ${openMenuId === doc.id ? 'z-50' : 'z-10'}`} style={{ backgroundColor: "white", borderColor: "#e6dfd8" }}>
 
                   {/* Thumbnail / Iframe preview */}
-                  <Link to={editHref} className="relative aspect-[4/5] border-b border-white/5 block rounded-t-xl overflow-hidden" style={{ backgroundColor: "#F9F9F7" }}>
+                  <Link to={editHref} className="relative aspect-[4/5] block rounded-t-xl overflow-hidden border-b" style={{ backgroundColor: "#faf9f5", borderColor: "#e6dfd8" }}>
                     {doc.html ? (
                       <iframe
                         srcDoc={doc.html}
@@ -122,20 +133,23 @@ export default function Dashboard() {
                         loading="lazy"
                         tabIndex={-1}
                         className="absolute top-0 left-0 w-[400%] h-[400%] origin-top-left border-0 pointer-events-none select-none"
-                        style={{ transform: "scale(0.25)", backgroundColor: "#F9F9F7" }}
+                        style={{ transform: "scale(0.25)", backgroundColor: "#faf9f5" }}
                         title={`Preview of ${doc.title}`}
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-50 text-gray-400 font-mono text-sm">
+                      <div className="w-full h-full flex items-center justify-center font-mono text-sm" style={{ backgroundColor: "#f5f0e8", color: "#8e8b82" }}>
                         Empty
                       </div>
                     )}
                   </Link>
 
                   {/* Card Footer / Details */}
-                  <div className="p-4 flex flex-col flex-1 relative bg-gray-900/40 rounded-b-xl">
+                  <div className="p-4 flex flex-col flex-1 relative rounded-b-xl" style={{ backgroundColor: "white" }}>
                     <div className="flex items-start justify-between gap-2 mb-3">
-                      <Link to={editHref} className="font-semibold text-gray-200 hover:text-indigo-400 transition-colors line-clamp-1 flex-1">
+                      <Link to={editHref} className="font-semibold transition-colors line-clamp-1 flex-1" style={{ color: "#252523" }}
+                        onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#cc785c")}
+                        onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#252523")}
+                      >
                         {doc.title}
                       </Link>
 
@@ -146,7 +160,10 @@ export default function Dashboard() {
                             e.preventDefault();
                             setOpenMenuId(openMenuId === doc.id ? null : doc.id);
                           }}
-                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-gray-500 hover:text-white transition-all p-1 -mr-1 rounded-md hover:bg-white/5"
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all p-1 -mr-1 rounded-md"
+                          style={{ color: "#8e8b82" }}
+                          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "#141413"; (e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de"; }}
+                          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "#8e8b82"; (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
                           aria-label="Document options"
                         >
                           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -155,26 +172,35 @@ export default function Dashboard() {
                         </button>
 
                         {openMenuId === doc.id && (
-                          <div className="absolute right-0 top-full mt-1 w-36 bg-gray-900 border border-white/10 rounded-lg shadow-2xl py-1 z-50">
-                            <Link to={viewHref} target="_blank" className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                          <div className="absolute right-0 top-full mt-1 w-36 rounded-lg shadow-xl py-1 z-50 border" style={{ backgroundColor: "white", borderColor: "#e6dfd8" }}>
+                            <Link to={viewHref} target="_blank" className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors" style={{ color: "#3d3d3a" }}
+                              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#f5f0e8")}
+                              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "")}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "#8e8b82" }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                               Preview
                             </Link>
                             <button onClick={(e) => {
                               e.preventDefault();
                               setRenameModalDoc(doc);
                               setOpenMenuId(null);
-                            }} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-gray-300 hover:bg-white/5 hover:text-white transition-colors">
-                              <svg className="w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+                            }} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors" style={{ color: "#3d3d3a" }}
+                              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#f5f0e8")}
+                              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "")}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "#8e8b82" }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
                               Rename
                             </button>
-                            <div className="h-px bg-white/10 my-1 mx-2" />
+                            <div className="h-px my-1 mx-2" style={{ backgroundColor: "#e6dfd8" }} />
                             <button onClick={(e) => {
                               e.preventDefault();
                               setDeleteModalDoc(doc);
                               setOpenMenuId(null);
-                            }} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors">
-                              <svg className="w-4 h-4 text-red-500/70" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            }} className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors" style={{ color: "#dc2626" }}
+                              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#fef2f2")}
+                              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "")}
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" style={{ color: "#ef4444" }}><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                               Delete
                             </button>
                           </div>
@@ -184,7 +210,7 @@ export default function Dashboard() {
 
                     <div className="flex items-center justify-between mt-auto">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                        <span className="text-xs flex items-center gap-1" style={{ color: "#8e8b82" }}>
                           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                           {doc.last_activity_at}
                         </span>
@@ -192,11 +218,11 @@ export default function Dashboard() {
 
                       <div className="flex items-center gap-3">
                         {doc.tab_count > 1 && (
-                          <span className="text-[10px] font-medium text-gray-400 bg-white/5 px-1.5 py-0.5 rounded border border-white/5" title={`${doc.tab_count} tabs`}>
+                          <span className="text-[10px] font-medium px-1.5 py-0.5 rounded border" style={{ color: "#6c6a64", backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }} title={`${doc.tab_count} tabs`}>
                             {doc.tab_count} tabs
                           </span>
                         )}
-                        <span className="text-[10px] font-medium text-gray-400 flex items-center gap-1" title={`${doc.view_count} views`}>
+                        <span className="text-[10px] font-medium flex items-center gap-1" style={{ color: "#6c6a64" }} title={`${doc.view_count} views`}>
                           <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                           {doc.view_count}
                         </span>
@@ -219,7 +245,7 @@ export default function Dashboard() {
         {renameModalDoc && (
           <Form method="post" action={`/dashboard/docs/${renameModalDoc.id}/rename`} onSubmit={() => setRenameModalDoc(null)}>
             <div className="p-6">
-              <label htmlFor="rename-title" className="block text-sm font-medium text-gray-400 mb-2">
+              <label htmlFor="rename-title" className="block text-sm font-medium mb-2" style={{ color: "#6c6a64" }}>
                 Document Title
               </label>
               <input
@@ -227,22 +253,29 @@ export default function Dashboard() {
                 id="rename-title"
                 name="title"
                 defaultValue={renameModalDoc.title}
-                className="w-full bg-black/50 border border-white/10 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all"
+                className="w-full rounded-lg px-4 py-2 focus:outline-none focus:ring-2 transition-all border"
+                style={{ backgroundColor: "white", borderColor: "#e6dfd8", color: "#141413" }}
                 autoFocus
                 required
               />
             </div>
-            <div className="px-6 py-4 bg-gray-950/50 flex items-center justify-end gap-3 border-t border-white/5">
+            <div className="px-6 py-4 flex items-center justify-end gap-3 border-t" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
               <button
                 type="button"
                 onClick={() => setRenameModalDoc(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: "#6c6a64" }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors shadow-lg shadow-indigo-500/20"
+                className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+                style={{ backgroundColor: "#cc785c" }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#a9583e")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#cc785c")}
               >
                 Rename
               </button>
@@ -260,25 +293,31 @@ export default function Dashboard() {
         {deleteModalDoc && (
           <>
             <div className="p-6">
-              <p className="text-gray-300">
-                Are you sure you want to delete <span className="font-semibold text-white">"{deleteModalDoc.title}"</span>?
+              <p style={{ color: "#3d3d3a" }}>
+                Are you sure you want to delete <span className="font-semibold" style={{ color: "#141413" }}>"{deleteModalDoc.title}"</span>?
               </p>
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-sm mt-2" style={{ color: "#8e8b82" }}>
                 This action cannot be undone. All tabs and history will be permanently lost.
               </p>
             </div>
-            <div className="px-6 py-4 bg-gray-950/50 flex items-center justify-end gap-3 border-t border-white/5">
+            <div className="px-6 py-4 flex items-center justify-end gap-3 border-t" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
               <button
                 type="button"
                 onClick={() => setDeleteModalDoc(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white transition-colors"
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{ color: "#6c6a64" }}
+                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
+                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
               >
                 Cancel
               </button>
               <Form method="post" action={`/dashboard/docs/${deleteModalDoc.id}/delete`} onSubmit={() => setDeleteModalDoc(null)}>
                 <button
                   type="submit"
-                  className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors shadow-lg shadow-red-500/20"
+                  className="px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors"
+                  style={{ backgroundColor: "#dc2626" }}
+                  onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#b91c1c")}
+                  onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#dc2626")}
                 >
                   Delete
                 </button>

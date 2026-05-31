@@ -359,50 +359,58 @@ export default function EditPage() {
   const viewUrl = `/d/${doc.id}/${activeTab?.slug ?? ""}`;
 
   return (
-    <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
+    <div className="flex flex-col h-screen" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
       {/* Top bar */}
-      <header className="border-b border-white/5 bg-gray-950/80 backdrop-blur-md px-4 py-3 flex items-center gap-4 shrink-0 z-10">
+      <header className="backdrop-blur-md px-4 py-3 flex items-center gap-4 shrink-0 z-10 border-b" style={{ backgroundColor: "rgba(250,249,245,0.9)", borderColor: "#e6dfd8" }}>
         <Link to="/" className="flex items-center gap-2 group shrink-0">
-          <div className="w-5 h-5 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow shadow-indigo-500/20 group-hover:shadow-indigo-500/40 transition-all">
+          <div className="w-5 h-5 rounded flex items-center justify-center shadow transition-all" style={{ background: "linear-gradient(to bottom right, #cc785c, #a9583e)" }}>
             <span className="text-white font-bold text-[10px] font-mono">&lt;/&gt;</span>
           </div>
-          <span className="text-sm font-semibold tracking-wide text-gray-300 group-hover:text-white transition-colors">html-docs</span>
+          <span className="text-sm font-semibold tracking-wide transition-colors" style={{ color: "#3d3d3a" }}>html-docs</span>
         </Link>
-        <div className="h-4 w-px bg-white/10 shrink-0"></div>
+        <div className="h-4 w-px shrink-0" style={{ backgroundColor: "#e6dfd8" }}></div>
         <input
           value={docTitle}
           onChange={(e) => {
             const val = e.target.value;
             setDocTitle(val);
             markDirty();
-            // User is manually editing — lock so HTML changes stop driving it.
             docTitleLockedRef.current = true;
           }}
           onBlur={save}
-          className="flex-1 bg-transparent text-gray-200 text-sm font-medium focus:outline-none border-b border-transparent focus:border-indigo-500/50 px-1 min-w-0 transition-colors placeholder-gray-600"
+          className="flex-1 bg-transparent text-sm font-medium focus:outline-none border-b border-transparent px-1 min-w-0 transition-colors"
+          style={{ color: "#252523" }}
           placeholder="Untitled document"
         />
         <div className="flex items-center gap-3 shrink-0">
-          {!saved && !saving && <span className="text-xs font-medium text-yellow-500/80 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-yellow-500/80"></span>Unsaved</span>}
-          {saving && <span className="text-xs font-medium text-indigo-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>Saving...</span>}
-          {saved && !saving && <span className="text-xs font-medium text-gray-500 flex items-center gap-1">Saved</span>}
+          {!saved && !saving && <span className="text-xs font-medium flex items-center gap-1" style={{ color: "#d97706" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#d97706" }}></span>Unsaved</span>}
+          {saving && <span className="text-xs font-medium flex items-center gap-1" style={{ color: "#cc785c" }}><span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#cc785c" }}></span>Saving...</span>}
+          {saved && !saving && <span className="text-xs font-medium" style={{ color: "#8e8b82" }}>Saved</span>}
 
-          <div className="hidden sm:flex bg-gray-900 rounded border border-white/5 p-0.5 ml-2">
-            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "code" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>Code</button>
-            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "split" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>Split</button>
-            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "preview" ? "bg-white/10 text-white shadow-sm" : "text-gray-500 hover:text-gray-300"}`}>View</button>
+          <div className="hidden sm:flex rounded border p-0.5 ml-2" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
+            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "code" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>Code</button>
+            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "split" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>Split</button>
+            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "preview" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>View</button>
           </div>
 
           <a href={viewUrl} target="_blank" rel="noopener noreferrer"
-            className="hidden sm:flex text-xs font-medium bg-white/5 hover:bg-white/10 text-gray-200 px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2">
-            Publish <span className="text-gray-400">↗</span>
+            className="hidden sm:flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2 border"
+            style={{ backgroundColor: "#efe9de", borderColor: "#e6dfd8", color: "#3d3d3a" }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#e8e0d2")}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de")}
+          >
+            Publish <span style={{ color: "#6c6a64" }}>↗</span>
           </a>
           <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${viewUrl}`)}
-            className="text-xs font-medium text-gray-400 hover:text-white px-2 py-1.5 rounded-md transition-colors">
+            className="text-xs font-medium px-2 py-1.5 rounded-md transition-colors"
+            style={{ color: "#6c6a64" }}
+            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
+            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
+          >
             Copy link
           </button>
           {!isOwner && (
-            <Link to="/auth/magic" className="text-xs font-medium text-indigo-400 hover:text-indigo-300 ml-2">
+            <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors" style={{ color: "#cc785c" }}>
               Sign in to claim →
             </Link>
           )}
@@ -424,9 +432,12 @@ export default function EditPage() {
         </div>
 
         {/* Mobile Tab Bar */}
-        <div className="sm:hidden border-b border-white/5 bg-gray-950 flex overflow-x-auto hide-scrollbar">
+        <div className="sm:hidden flex overflow-x-auto hide-scrollbar border-b" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
           {tabs.map(t => (
-            <button key={t.id} onClick={() => handleTabSelect(t.id)} className={`px-4 py-3 text-sm font-medium whitespace-nowrap ${t.id === activeTabId ? 'text-white border-b-2 border-indigo-500' : 'text-gray-500'}`}>
+            <button key={t.id} onClick={() => handleTabSelect(t.id)}
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap`}
+              style={t.id === activeTabId ? { color: "#cc785c", borderBottom: "2px solid #cc785c" } : { color: "#8e8b82" }}
+            >
               {t.name}
             </button>
           ))}
@@ -434,8 +445,8 @@ export default function EditPage() {
 
         {/* Monaco editor */}
         {(layout === "split" || layout === "code") && (
-          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-white/5">
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading editor…</div>}>
+          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0" style={{ borderColor: "#e6dfd8" }}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full" style={{ color: "#8e8b82" }}>Loading editor…</div>}>
               <Editor
                 value={activeTab?.html ?? ""}
                 onChange={handleHtmlChange}
@@ -447,8 +458,8 @@ export default function EditPage() {
 
         {/* Preview */}
         {(layout === "split" || layout === "preview") && (
-          <div className={`flex-1 overflow-hidden bg-white flex flex-col ${layout === "split" ? "sm:border-l border-white/10" : ""}`}>
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500">Loading…</div>}>
+          <div className={`flex-1 overflow-hidden flex flex-col ${layout === "split" ? "sm:border-l" : ""}`} style={{ backgroundColor: "#faf9f5", borderColor: "#e6dfd8" }}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full" style={{ color: "#8e8b82" }}>Loading…</div>}>
               <PreviewIframe html={previewHtml} />
             </Suspense>
           </div>
