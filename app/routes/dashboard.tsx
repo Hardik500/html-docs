@@ -4,6 +4,7 @@ import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
+import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { Modal } from "~/components/Modal";
 
 interface DocRow {
@@ -119,15 +120,15 @@ export default function Dashboard() {
                 <div key={doc.id} className={`group flex flex-col rounded-xl shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 relative border bg-white border-hairline ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
 
                   {/* Thumbnail / Iframe preview */}
-                  <Link to={editHref} className="relative aspect-[4/5] block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
+                  <Link to={editHref} className="relative aspect-4/5 block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
                     {doc.html ? (
                       <iframe
-                        srcDoc={doc.html}
+                        srcDoc={injectDefaultStyles(doc.html)}
                         sandbox="allow-scripts"
                         loading="lazy"
                         tabIndex={-1}
-                        className="absolute top-0 left-0 w-[400%] h-[400%] origin-top-left border-0 pointer-events-none select-none bg-canvas"
-                        style={{ transform: "scale(0.25)" }}
+                        className="absolute top-0 left-0 w-[200%] h-[200%] origin-top-left border-0 pointer-events-none select-none bg-canvas"
+                        style={{ transform: "scale(0.5)" }}
                         title={`Preview of ${doc.title}`}
                       />
                     ) : (
