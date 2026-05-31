@@ -143,6 +143,7 @@ interface TabSidebarProps {
   onAdd: () => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
+  onDropFiles?: (files: Array<{ name: string; html: string }>) => void;
 }
 
 export default function TabSidebar({
@@ -153,7 +154,9 @@ export default function TabSidebar({
   onAdd,
   onRename,
   onDelete,
+  onDropFiles,
 }: TabSidebarProps) {
+  const [dragOver, setDragOver] = useState(false);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -174,8 +177,54 @@ export default function TabSidebar({
     onReorder(reordered);
   }
 
+  function handleDragOver(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) {
+      setDragOver(true);
+    }
+  }
+
+  function handleDragLeave(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }
+
+  async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    const files = Array.from(e.dataTransfer.files || []);
+    const htmlFiles: Array<{ name: string; html: string }> = [];
+
+    for (const file of files) {
+      if (file.type === "text/html" || file.name.endsWith(".html")) {
+        try {
+          const html = await file.text();
+          const name = file.name.replace(/\.html$/i, "");
+          htmlFiles.push({ name, html });
+        } catch {
+          // Silently skip files that can't be read
+        }
+      }
+    }
+
+    if (htmlFiles.length > 0 && onDropFiles) {
+      onDropFiles(htmlFiles);
+    }
+  }
+
   return (
-    <div className="flex flex-col h-full w-56 shrink-0 z-10 border-r bg-surface border-hairline">
+    <div
+      className={`flex flex-col h-full w-56 shrink-0 z-10 border-r bg-surface border-hairline transition-colors ${
+        dragOver ? "bg-primary/5 border-primary" : ""
+      }`}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <div className="px-4 py-3 flex items-center justify-between border-b border-hairline">
         <span className="text-[11px] font-bold uppercase tracking-widest text-subtle">
           Files
@@ -190,7 +239,7 @@ export default function TabSidebar({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      <div className="flex-1 overflow-y-auto p-2 space-y-0.5 flex flex-col">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -213,6 +262,27 @@ export default function TabSidebar({
             ))}
           </SortableContext>
         </DndContext>
+
+        {/* Drag & Drop Instructions */}
+        {tabs.length < 20 && (
+          <div className={`mt-auto pt-4 px-3 py-4 rounded-lg border-2 border-dashed transition-all ${
+            dragOver
+              ? "border-primary bg-primary/8 text-primary"
+              : "border-hairline bg-surface text-muted hover:border-primary/50 hover:text-body-strong"
+          }`}>
+            <div className="flex flex-col items-center text-center">
+              <svg className="w-5 h-5 mb-2 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0 0V8m0 4H8m0 0h4m4 0h-4" />
+              </svg>
+              <p className="text-xs font-medium mb-0.5">
+                {dragOver ? "Drop HTML files here" : "Drag HTML files here"}
+              </p>
+              <p className="text-[10px] opacity-70">
+                {tabs.length === 0 ? "or click + Add to create one" : `${20 - tabs.length} slot${20 - tabs.length === 1 ? "" : "s"} available`}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

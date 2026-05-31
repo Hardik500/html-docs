@@ -188,6 +188,12 @@ export default function EditPage() {
   // When true, user has manually edited the doc title — HTML changes stop driving it.
   const docTitleLockedRef = useRef(false);
 
+  // Track tab IDs to delete on next save
+  const tabsToDeleteRef = useRef<Set<string>>(new Set());
+
+  // Track last saved state to prevent duplicate saves
+  const lastSavePayloadRef = useRef<string>("");
+
   /** Mark state as dirty. Always use this instead of bare setSaved(false). */
   function markDirty() {
     newChangesRef.current = true;
@@ -222,11 +228,28 @@ export default function EditPage() {
   function save() {
     if (isSavingRef.current) return; // already in flight, skip
     if (savedRef.current) return;    // nothing has changed, skip
+
+    // Build tabs payload with _delete flags for tabs marked for deletion
+    const tabsPayload = [
+      ...tabsForSaveRef.current,
+      ...Array.from(tabsToDeleteRef.current).map(id => ({ id, _delete: true, name: "", position: 0 }))
+    ];
+
+    console.log('[save]', {
+      tabsToDelete: Array.from(tabsToDeleteRef.current),
+      tabsPayload: tabsPayload.map(t => ({ id: t.id, name: t.name, _delete: (t as any)._delete }))
+    });
+
+    // Prevent duplicate saves of identical payloads
+    const payload = JSON.stringify({ title: docTitleRef.current, tabs: tabsPayload });
+    if (payload === lastSavePayloadRef.current) return;
+    lastSavePayloadRef.current = payload;
+
     newChangesRef.current = false;   // snapshot: no new changes yet
     isSavingRef.current = true;
     setSaving(true);
     fetcher.submit(
-      { intent: "save", title: docTitleRef.current, tabs: tabsForSaveRef.current } as unknown as Record<string, string>,
+      { intent: "save", title: docTitleRef.current, tabs: tabsPayload } as unknown as Record<string, string>,
       { method: "POST", encType: "application/json", action: `/d/${doc.id}/edit` }
     );
   }
@@ -242,6 +265,9 @@ export default function EditPage() {
 
     const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
     if (data?.ok) {
+      // Clear the delete queue after successful save
+      tabsToDeleteRef.current.clear();
+
       // Only mark clean if no new edits arrived while the request was in flight.
       // If newChangesRef is true, keep saved=false so autosave retries immediately.
       if (!newChangesRef.current) setSaved(true);
@@ -364,6 +390,67 @@ export default function EditPage() {
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
   }
 
+  function handleDropFiles(files: Array<{ name: string; html: string }>) {
+    const GENERIC = /^(untitled.*|tab \d+|new tab)$/i;
+
+    // If we only have 1 tab and it matches a generic/placeholder name, replace it entirely
+    const shouldReplaceOnlyTab = tabs.length === 1 && GENERIC.test(tabs[0].name.trim());
+
+    const availableSlots = shouldReplaceOnlyTab ? MAX_TABS : MAX_TABS - tabs.length;
+    const maxNewTabs = Math.min(files.length, availableSlots);
+    if (maxNewTabs <= 0) return;
+
+    markDirty();
+
+    // Create new tabs from files
+    const newTabs = files.slice(0, maxNewTabs).map((file, index) => {
+      const position = index;
+      const slug = dedupeSlug(slugify(file.name), new Set());
+      const tempId = `new:${Date.now()}-${index}`;
+      const name = file.name.slice(0, 200);
+      tabAutoNamesRef.current.set(tempId, "\0");
+      return { id: tempId, slug, name, position, html: file.html };
+    });
+
+    // If we only have one generic tab, mark it for deletion and replace with new ones
+    if (shouldReplaceOnlyTab) {
+      const oldTabId = tabs[0].id;
+      // Mark the old tab for deletion
+      tabsToDeleteRef.current.add(oldTabId);
+      // Set tabs to only the new ones
+      setTabs(newTabs);
+      // Switch to the first new tab
+      if (newTabs.length > 0) {
+        setActiveTabId(newTabs[0].id);
+        setPreviewHtml(newTabs[0].html);
+      }
+    } else {
+      // Append new tabs if there are already meaningful tabs
+      setTabs((prev) => [
+        ...prev,
+        ...newTabs.map((t, i) => ({ ...t, position: prev.length + i }))
+      ]);
+      if (newTabs.length > 0) {
+        setActiveTabId(newTabs[0].id);
+        setPreviewHtml(newTabs[0].html);
+      }
+    }
+
+    // Auto-derive doc title from first dropped file if doc title is still generic
+    if (GENERIC.test(docTitle.trim()) && newTabs.length > 0) {
+      const derived = extractTitle(newTabs[0].html, "");
+      if (derived) {
+        setDocTitle(derived);
+        docTitleLockedRef.current = false;
+      }
+    }
+
+    if (newTabs.length > 0) {
+      setActiveTabId(newTabs[0].id);
+      setPreviewHtml(newTabs[0].html);
+    }
+  }
+
   const viewUrl = `/d/${doc.id}/${activeTab?.slug ?? ""}`;
 
   return (
@@ -429,6 +516,7 @@ export default function EditPage() {
             onAdd={handleAddTab}
             onRename={handleRename}
             onDelete={handleDelete}
+            onDropFiles={handleDropFiles}
           />
         </div>
 
