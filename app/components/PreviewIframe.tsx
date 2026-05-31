@@ -21,7 +21,7 @@ const PREVIEW_CSP = [
   "style-src 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
   "font-src https://fonts.gstatic.com data:",
   "img-src https: data:",
-  "connect-src 'none'",
+  "connect-src https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.skypack.dev",
   "frame-src 'none'",
   "object-src 'none'",
   "base-uri 'none'",
@@ -72,7 +72,7 @@ export default function PreviewIframe({ html, title = "Preview" }: PreviewIframe
   };
 
   return (
-    <div className="relative w-full h-full bg-white">
+    <div className="relative w-full h-full" style={{ backgroundColor: "#F9F9F7" }}>
       {frames.map((frame, i) => (
         <iframe
           key={frame.id}

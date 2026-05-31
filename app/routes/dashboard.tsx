@@ -114,15 +114,15 @@ export default function Dashboard() {
                 <div key={doc.id} className={`group flex flex-col bg-gray-900/40 border border-white/5 rounded-xl shadow-xl hover:shadow-2xl hover:border-white/10 transition-all hover:-translate-y-1 relative ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
 
                   {/* Thumbnail / Iframe preview */}
-                  <Link to={editHref} className="relative aspect-[4/5] bg-white border-b border-white/5 block rounded-t-xl overflow-hidden">
+                  <Link to={editHref} className="relative aspect-[4/5] border-b border-white/5 block rounded-t-xl overflow-hidden" style={{ backgroundColor: "#F9F9F7" }}>
                     {doc.html ? (
                       <iframe
                         srcDoc={doc.html}
                         sandbox="allow-scripts"
                         loading="lazy"
                         tabIndex={-1}
-                        className="absolute top-0 left-0 w-[400%] h-[400%] origin-top-left border-0 pointer-events-none select-none bg-white"
-                        style={{ transform: "scale(0.25)" }}
+                        className="absolute top-0 left-0 w-[400%] h-[400%] origin-top-left border-0 pointer-events-none select-none"
+                        style={{ transform: "scale(0.25)", backgroundColor: "#F9F9F7" }}
                         title={`Preview of ${doc.title}`}
                       />
                     ) : (
