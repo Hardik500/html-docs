@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { injectDefaultStyles } from "~/lib/htmlDefaults";
 
 interface PreviewIframeProps {
   html: string;
@@ -75,7 +76,7 @@ export default function PreviewIframe({ html, title = "Preview" }: PreviewIframe
       {frames.map((frame, i) => (
         <iframe
           key={frame.id}
-          srcDoc={injectCsp(frame.html)}
+          srcDoc={injectDefaultStyles(injectCsp(frame.html))}
           onLoad={() => handleLoad(frame.id)}
           sandbox="allow-scripts"
           title={title}

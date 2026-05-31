@@ -1,6 +1,7 @@
 import type { Route } from "./+types/raw.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
 import { rawResponseHeaders } from "~/lib/csp.server";
+import { injectDefaultStyles } from "~/lib/htmlDefaults";
 
 export async function loader({ params }: Route.LoaderArgs) {
   const { docId, tabSlug } = params;
@@ -16,7 +17,7 @@ export async function loader({ params }: Route.LoaderArgs) {
 
   const { html } = result.rows[0];
 
-  return new Response(html, {
+  return new Response(injectDefaultStyles(html), {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",

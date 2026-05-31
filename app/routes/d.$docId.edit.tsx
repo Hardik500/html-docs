@@ -207,9 +207,13 @@ export default function EditPage() {
   docTitleRef.current = docTitle;
   const tabsForSaveRef = useRef(tabs);
   tabsForSaveRef.current = tabs;
+  // Mirror saved state in a ref so stale closures (Monaco onBlur) can read it.
+  const savedRef = useRef(saved);
+  savedRef.current = saved;
 
   function save() {
     if (isSavingRef.current) return; // already in flight, skip
+    if (savedRef.current) return;    // nothing has changed, skip
     newChangesRef.current = false;   // snapshot: no new changes yet
     isSavingRef.current = true;
     setSaving(true);
