@@ -8,6 +8,15 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const responseHeaders = new Headers();
 
+  // Supabase forwards its own error params here when the link is invalid/expired.
+  const supabaseError = url.searchParams.get("error");
+  if (supabaseError) {
+    const desc = url.searchParams.get("error_description") ?? supabaseError;
+    console.error("[auth/callback] Supabase error:", desc);
+    const msg = encodeURIComponent(desc.replace(/\+/g, " "));
+    return redirect(`/auth/magic?error=${msg}`, { headers: responseHeaders });
+  }
+
   if (!code) {
     return redirect("/auth/magic?error=missing_code", {
       headers: responseHeaders,

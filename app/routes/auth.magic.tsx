@@ -1,4 +1,4 @@
-import { Form, useActionData, Link } from "react-router";
+import { Form, useActionData, Link, data } from "react-router";
 import type { Route } from "./+types/auth.magic";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
 import { checkMagicEmailRate, checkMagicIpRate } from "~/lib/ratelimit.server";
@@ -29,7 +29,10 @@ export async function action({ request }: Route.ActionArgs) {
   if (!emailOk || !ipOk)
     return { error: "Too many requests. Please try again later." };
 
-  const { supabase } = createSupabaseServerClient(request);
+  // Must pass responseHeaders so the PKCE code verifier cookie gets set on
+  // the client. Without it, Supabase rejects the callback as otp_expired.
+  const responseHeaders = new Headers();
+  const { supabase } = createSupabaseServerClient(request, responseHeaders);
   const appUrl = process.env.APP_URL || "http://localhost:5173";
 
   const { error } = await supabase.auth.signInWithOtp({
@@ -42,14 +45,20 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (error) {
     console.error("[auth] signInWithOtp error:", error.message);
-    return { error: "Failed to send sign-in email. Please try again." };
+    return data({ error: "Failed to send sign-in email. Please try again." }, { headers: responseHeaders });
   }
 
-  return { success: true };
+  return data({ success: true }, { headers: responseHeaders });
 }
 
 export default function MagicLinkPage() {
-  const data = useActionData<typeof action>();
+  const actionData = useActionData<typeof action>();
+  // Also surface errors forwarded from /auth/callback via query string
+  const urlError =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("error")
+      : null;
+  const errorMessage = ('error' in (actionData ?? {}) ? (actionData as { error: string }).error : null) ?? urlError;
 
   return (
     <main className="min-h-screen bg-gray-950 text-gray-100 flex items-center justify-center px-4">
@@ -62,15 +71,15 @@ export default function MagicLinkPage() {
           Enter your email and we'll send you a magic link to sign in.
         </p>
 
-        {data?.success ? (
+        {'success' in (actionData ?? {}) ? (
           <div className="bg-green-900/30 border border-green-700 rounded-lg p-4 text-green-300 text-sm">
             Check your email! A sign-in link has been sent.
           </div>
         ) : (
           <Form method="post" className="space-y-4">
-            {data?.error && (
+            {errorMessage && (
               <div className="bg-red-900/30 border border-red-700 rounded-lg p-3 text-red-300 text-sm">
-                {data.error}
+                {errorMessage}
               </div>
             )}
             <input
