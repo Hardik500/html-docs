@@ -79,28 +79,25 @@ export default function ViewerPage() {
   const { doc, tabs, activeTab, canEdit } = useLoaderData<LoaderData>();
 
   return (
-    <div className="flex flex-col h-screen" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
+    <div className="flex flex-col h-screen bg-canvas text-ink">
       {/* Top nav */}
-      <header className="backdrop-blur-md px-4 py-3 flex items-center justify-between gap-4 shrink-0 z-10 border-b" style={{ backgroundColor: "rgba(250,249,245,0.9)", borderColor: "#e6dfd8" }}>
+      <header className="backdrop-blur-md px-4 py-3 flex items-center justify-between gap-4 shrink-0 z-10 border-b bg-canvas/90 border-hairline">
         <div className="flex items-center gap-3 min-w-0">
           <Link to="/" className="flex items-center gap-2 group shrink-0">
-            <div className="w-5 h-5 rounded flex items-center justify-center shadow transition-all" style={{ background: "linear-gradient(to bottom right, #cc785c, #a9583e)" }}>
+            <div className="w-5 h-5 rounded flex items-center justify-center shadow transition-all logo-gradient">
               <span className="text-white font-bold text-[10px] font-mono">&lt;/&gt;</span>
             </div>
-            <span className="text-sm font-semibold tracking-wide transition-colors" style={{ color: "#3d3d3a" }}>html-docs</span>
+            <span className="text-sm font-semibold tracking-wide transition-colors text-body">html-docs</span>
           </Link>
-          <div className="h-4 w-px shrink-0" style={{ backgroundColor: "#e6dfd8" }}></div>
-          <span className="text-sm font-medium truncate" style={{ color: "#3d3d3a" }}>{doc.title}</span>
+          <div className="h-4 w-px shrink-0 bg-hairline"></div>
+          <span className="text-sm font-medium truncate text-body">{doc.title}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ShareBox docId={doc.id} tabSlug={activeTab.slug} />
           {canEdit && (
             <Link
               to={`/d/${doc.id}/edit`}
-              className="text-xs font-medium text-white px-3 py-1.5 rounded-md transition-colors"
-              style={{ backgroundColor: "#cc785c" }}
-              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#a9583e")}
-              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#cc785c")}
+              className="text-xs font-medium text-white px-3 py-1.5 rounded-md transition-colors bg-primary hover:bg-primary-dark"
             >
               Edit
             </Link>
@@ -112,7 +109,7 @@ export default function ViewerPage() {
       <TabBar tabs={tabs} activeSlug={activeTab.slug} docId={doc.id} />
 
       {/* Iframe */}
-      <div className="flex-1 overflow-hidden" style={{ backgroundColor: "#faf9f5" }}>
+      <div className="flex-1 overflow-hidden bg-canvas">
         <iframe
           key={activeTab.slug}
           src={`/raw/${doc.id}/${activeTab.slug}`}
@@ -123,9 +120,9 @@ export default function ViewerPage() {
       </div>
 
       {/* Footer */}
-      <footer className="px-4 py-2 text-center text-xs border-t" style={{ backgroundColor: "#faf9f5", borderColor: "#e6dfd8", color: "#8e8b82" }}>
+      <footer className="px-4 py-2 text-center text-xs border-t bg-canvas border-hairline text-subtle">
         Powered by{" "}
-        <Link to="/" className="transition-colors" style={{ color: "#6c6a64" }}>
+        <Link to="/" className="transition-colors text-muted">
           html-docs
         </Link>
       </footer>

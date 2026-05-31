@@ -74,21 +74,16 @@ function SortableTab({
   return (
     <div
       ref={setNodeRef}
-      style={{
-        ...style,
-        backgroundColor: isActive ? "#efe9de" : undefined,
-        color: isActive ? "#141413" : "#6c6a64",
-      }}
+      style={style}
       className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm font-medium transition-colors ${
-        isActive ? "shadow-sm" : "hover:bg-[#efe9de] hover:text-[#252523]"
+        isActive ? "bg-card text-ink shadow-sm" : "text-muted hover:bg-card hover:text-body-strong"
       }`}
     >
       {!editing && (
         <span
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity"
-          style={{ color: "#8e8b82" }}
+          className="cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity text-subtle"
           aria-label="Drag to reorder"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
@@ -103,8 +98,7 @@ function SortableTab({
           onBlur={commitRename}
           onKeyDown={handleKeyDown}
           maxLength={200}
-          className="flex-1 text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 min-w-0 border"
-          style={{ backgroundColor: "white", color: "#141413", borderColor: "#e6dfd8", "--tw-ring-color": "#cc785c" } as React.CSSProperties}
+          className="flex-1 text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary min-w-0 border bg-white text-ink border-hairline"
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
@@ -121,10 +115,7 @@ function SortableTab({
         <div className="hidden group-hover:flex items-center gap-0.5">
           <button
             onClick={startEditing}
-            className="p-1 rounded transition-colors"
-            style={{ color: "#8e8b82" }}
-            onMouseEnter={e => { e.currentTarget.style.color = "#141413"; e.currentTarget.style.backgroundColor = "#e8e0d2"; }}
-            onMouseLeave={e => { e.currentTarget.style.color = "#8e8b82"; e.currentTarget.style.backgroundColor = ""; }}
+            className="p-1 rounded transition-colors text-subtle hover:text-ink hover:bg-strong"
             title="Rename"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -132,10 +123,7 @@ function SortableTab({
           {canDelete && (
             <button
               onClick={() => onDelete(tab.id)}
-              className="p-1 rounded transition-colors"
-              style={{ color: "#8e8b82" }}
-              onMouseEnter={e => { e.currentTarget.style.color = "#dc2626"; e.currentTarget.style.backgroundColor = "#fef2f2"; }}
-              onMouseLeave={e => { e.currentTarget.style.color = "#8e8b82"; e.currentTarget.style.backgroundColor = ""; }}
+              className="p-1 rounded transition-colors text-subtle hover:text-red-600 hover:bg-red-50"
               title="Delete tab"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -187,18 +175,15 @@ export default function TabSidebar({
   }
 
   return (
-    <div className="flex flex-col h-full w-56 shrink-0 z-10 border-r" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
-      <div className="px-4 py-3 flex items-center justify-between border-b" style={{ borderColor: "#e6dfd8" }}>
-        <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: "#8e8b82" }}>
+    <div className="flex flex-col h-full w-56 shrink-0 z-10 border-r bg-surface border-hairline">
+      <div className="px-4 py-3 flex items-center justify-between border-b border-hairline">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-subtle">
           Files
         </span>
         <button
           onClick={onAdd}
           disabled={tabs.length >= 20}
-          className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded"
-          style={{ color: "#cc785c", backgroundColor: "rgba(204,120,92,0.1)" }}
-          onMouseEnter={e => (e.currentTarget.style.backgroundColor = "rgba(204,120,92,0.2)")}
-          onMouseLeave={e => (e.currentTarget.style.backgroundColor = "rgba(204,120,92,0.1)")}
+          className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
           title="Add tab"
         >
           <span>+</span> Add

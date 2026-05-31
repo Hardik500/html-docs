@@ -15,24 +15,22 @@ interface TabBarProps {
 
 export default function TabBar({ tabs, activeSlug, docId }: TabBarProps) {
   return (
-    <div className="flex items-center gap-1 px-3 pt-2 overflow-x-auto shrink-0 scrollbar-hide border-b" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
+    <div className="flex items-center gap-1 px-3 pt-2 overflow-x-auto shrink-0 scrollbar-hide border-b bg-surface border-hairline">
       {tabs.map((tab) => {
         const isActive = tab.slug === activeSlug;
         return (
           <Link
             key={tab.id}
             to={`/d/${docId}/${tab.slug}`}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap rounded-t-md transition-all relative`}
-            style={{
-              backgroundColor: isActive ? "white" : undefined,
-              color: isActive ? "#141413" : "#6c6a64",
-            }}
-            onMouseEnter={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = "#252523"; (e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de"; } }}
-            onMouseLeave={e => { if (!isActive) { (e.currentTarget as HTMLElement).style.color = "#6c6a64"; (e.currentTarget as HTMLElement).style.backgroundColor = ""; } }}
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap rounded-t-md transition-all relative ${
+              isActive
+                ? "bg-white text-ink"
+                : "text-muted hover:text-body-strong hover:bg-card"
+            }`}
           >
             {tab.name}
             {isActive && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-sm" style={{ backgroundColor: "#cc785c" }} />
+              <div className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t-sm bg-primary" />
             )}
           </Link>
         );

@@ -50,7 +50,7 @@ export default function Landing() {
   }, [html]);
 
   return (
-    <main className="min-h-screen flex flex-col relative overflow-hidden font-sans" style={{ backgroundColor: "#faf9f5", color: "#141413", selection: "rgba(204,120,92,0.2)" }}>
+    <main className="min-h-screen flex flex-col relative overflow-hidden font-sans bg-canvas text-ink">
       {/* Subtle warm background glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] opacity-30 pointer-events-none">
         <div className="absolute inset-0 rounded-full blur-[120px]" style={{ background: "radial-gradient(ellipse, rgba(204,120,92,0.15) 0%, rgba(245,240,232,0.1) 60%, transparent 100%)" }} />
@@ -59,29 +59,20 @@ export default function Landing() {
       {/* Subtle dot grid for light bg */}
       <div className="absolute inset-0 pointer-events-none" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='20' height='20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='2' cy='2' r='1' fill='rgba(0,0,0,0.04)'/%3E%3C/svg%3E\")", maskImage: "linear-gradient(to bottom, white, transparent 80%)" }} />
 
-      <nav className="backdrop-blur-xl px-6 py-4 flex items-center justify-between sticky top-0 z-50 border-b" style={{ backgroundColor: "rgba(250,249,245,0.85)", borderColor: "#e6dfd8" }}>
+      <nav className="backdrop-blur-xl px-6 py-4 flex items-center justify-between sticky top-0 z-50 border-b bg-canvas/85 border-hairline">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg border" style={{ background: "linear-gradient(to bottom right, #cc785c, #a9583e)", borderColor: "rgba(204,120,92,0.3)" }}>
+          <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-lg border logo-gradient border-primary/30">
             <span className="text-white font-bold text-sm font-mono">&lt;/&gt;</span>
           </div>
-          <span className="font-semibold text-sm tracking-wide" style={{ color: "#252523" }}>html-docs</span>
+          <span className="font-semibold text-sm tracking-wide text-body-strong">html-docs</span>
         </div>
         <div className="flex items-center gap-6">
-          <Link
-            to="/dashboard"
-            className="text-sm font-medium transition-colors"
-            style={{ color: "#6c6a64" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
-          >
+          <Link to="/dashboard" className="text-sm font-medium transition-colors text-muted hover:text-ink">
             Sign in
           </Link>
           <Link
             to="/dashboard"
-            className="text-sm font-medium px-4 py-2 rounded-lg transition-all border"
-            style={{ backgroundColor: "#efe9de", borderColor: "#e6dfd8", color: "#252523" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "#e8e0d2"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de"; }}
+            className="text-sm font-medium px-4 py-2 rounded-lg transition-all border bg-card border-hairline text-body-strong hover:bg-strong"
           >
             Dashboard
           </Link>
@@ -90,14 +81,14 @@ export default function Landing() {
 
       <div className="flex-1 flex flex-col items-center px-4 pt-24 pb-32 z-10">
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-8 border" style={{ backgroundColor: "rgba(204,120,92,0.08)", borderColor: "rgba(204,120,92,0.2)", color: "#cc785c" }}>
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: "#cc785c" }} />
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-8 border bg-primary/8 border-primary/20 text-primary">
+            <span className="w-2 h-2 rounded-full animate-pulse bg-primary" />
             No sign-up required
           </div>
-          <h1 className="text-5xl sm:text-7xl font-extrabold tracking-tight mb-6" style={{ color: "#141413" }}>
+          <h1 className="text-5xl sm:text-7xl font-extrabold tracking-tight mb-6 text-ink">
             Share HTML docs <br className="hidden sm:block" /> at the speed of thought.
           </h1>
-          <p className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed mb-10" style={{ color: "#6c6a64" }}>
+          <p className="text-lg sm:text-xl max-w-2xl mx-auto leading-relaxed mb-10 text-muted">
             The fastest way to write, preview, and share HTML components.
             Perfect for sharing AI-generated code, templates, or quick experiments.
           </p>
@@ -106,10 +97,7 @@ export default function Landing() {
             <input type="hidden" name="html" value={html} />
             <button
               type="submit"
-              className="group relative inline-flex items-center justify-center gap-3 text-white font-semibold px-8 py-4 rounded-full text-lg transition-all hover:scale-105 outline-none"
-              style={{ backgroundColor: "#cc785c" }}
-              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#a9583e")}
-              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#cc785c")}
+              className="group relative inline-flex items-center justify-center gap-3 text-white font-semibold px-8 py-4 rounded-full text-lg transition-all hover:scale-105 outline-none bg-primary hover:bg-primary-dark"
             >
               Share This Document
               <span className="group-hover:translate-x-1 transition-transform">→</span>
@@ -147,35 +135,26 @@ export default function Landing() {
 
         {/* Feature Highlights */}
         <div className="mt-32 max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
-          <div className="p-6 rounded-2xl border transition-colors" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#f5f0e8")}
-          >
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "rgba(204,120,92,0.12)", color: "#cc785c" }}>
+          <div className="p-6 rounded-2xl border transition-colors bg-surface border-hairline hover:bg-card">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 bg-primary/12 text-primary">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
             </div>
-            <h3 className="text-lg font-semibold mb-2" style={{ color: "#141413" }}>Instant Previews</h3>
-            <p className="text-sm leading-relaxed" style={{ color: "#6c6a64" }}>See your changes in real-time. The editor and preview are side-by-side for an ultra-fast feedback loop.</p>
+            <h3 className="text-lg font-semibold mb-2 text-ink">Instant Previews</h3>
+            <p className="text-sm leading-relaxed text-muted">See your changes in real-time. The editor and preview are side-by-side for an ultra-fast feedback loop.</p>
           </div>
-          <div className="p-6 rounded-2xl border transition-colors" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#f5f0e8")}
-          >
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "rgba(93,184,166,0.12)", color: "#5db8a6" }}>
+          <div className="p-6 rounded-2xl border transition-colors bg-surface border-hairline hover:bg-card">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 bg-teal/12 text-teal">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
             </div>
-            <h3 className="text-lg font-semibold mb-2" style={{ color: "#141413" }}>One-Click Sharing</h3>
-            <p className="text-sm leading-relaxed" style={{ color: "#6c6a64" }}>Copy the URL and share it with anyone. They'll see exactly what you see, perfectly rendered.</p>
+            <h3 className="text-lg font-semibold mb-2 text-ink">One-Click Sharing</h3>
+            <p className="text-sm leading-relaxed text-muted">Copy the URL and share it with anyone. They'll see exactly what you see, perfectly rendered.</p>
           </div>
-          <div className="p-6 rounded-2xl border transition-colors" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#f5f0e8")}
-          >
-            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "rgba(232,165,90,0.12)", color: "#e8a55a" }}>
+          <div className="p-6 rounded-2xl border transition-colors bg-surface border-hairline hover:bg-card">
+            <div className="w-10 h-10 rounded-lg flex items-center justify-center mb-4 bg-amber/12 text-amber">
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
             </div>
-            <h3 className="text-lg font-semibold mb-2" style={{ color: "#141413" }}>Secure & Private</h3>
-            <p className="text-sm leading-relaxed" style={{ color: "#6c6a64" }}>Anonymous docs are auto-deleted after 30 days. Sign in to keep them forever and manage them in your dashboard.</p>
+            <h3 className="text-lg font-semibold mb-2 text-ink">Secure & Private</h3>
+            <p className="text-sm leading-relaxed text-muted">Anonymous docs are auto-deleted after 30 days. Sign in to keep them forever and manage them in your dashboard.</p>
           </div>
         </div>
       </div>

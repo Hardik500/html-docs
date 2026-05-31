@@ -3,12 +3,34 @@
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif,
     "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
+  /* ── Claude canvas palette ──────────────────────────── */
+  --color-canvas: #faf9f5;       /* page background   */
+  --color-surface: #f5f0e8;      /* raised surfaces   */
+  --color-card: #efe9de;         /* cards, active bg  */
+  --color-strong: #e8e0d2;       /* pressed / hover   */
+  --color-hairline: #e6dfd8;     /* borders           */
+
+  /* ── Text ──────────────────────────────────────────── */
+  --color-ink: #141413;          /* headings, labels  */
+  --color-body-strong: #252523;  /* bold body         */
+  --color-body: #3d3d3a;         /* regular body      */
+  --color-muted: #6c6a64;        /* muted text        */
+  --color-subtle: #8e8b82;       /* placeholders      */
+
+  /* ── Brand ─────────────────────────────────────────── */
+  --color-primary: #cc785c;      /* coral CTA         */
+  --color-primary-dark: #a9583e; /* coral hover       */
+
+  /* ── Accents ────────────────────────────────────────── */
+  --color-teal: #5db8a6;
+  --color-amber: #e8a55a;
 }
 
 html,
 body {
-  background-color: #faf9f5;
-  color: #141413;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
@@ -35,6 +57,14 @@ body {
 }
 
 /* Utilities */
+@utility logo-gradient {
+  background: linear-gradient(
+    to bottom right,
+    var(--color-primary),
+    var(--color-primary-dark)
+  );
+}
+
 @utility scrollbar-hide {
   -ms-overflow-style: none; /* IE and Edge */
   scrollbar-width: none; /* Firefox */

@@ -31,15 +31,12 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       />
       
       {/* Modal Content */}
-      <div className="rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 border" style={{ backgroundColor: "white", borderColor: "#e6dfd8" }}>
-        <div className="px-6 py-4 flex items-center justify-between border-b" style={{ borderColor: "#e6dfd8" }}>
-          <h2 className="text-lg font-semibold" style={{ color: "#141413" }}>{title}</h2>
+      <div className="rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 border bg-white border-hairline">
+        <div className="px-6 py-4 flex items-center justify-between border-b border-hairline">
+          <h2 className="text-lg font-semibold text-ink">{title}</h2>
           <button
             onClick={onClose}
-            className="transition-colors"
-            style={{ color: "#6c6a64" }}
-            onMouseEnter={e => (e.currentTarget.style.color = "#141413")}
-            onMouseLeave={e => (e.currentTarget.style.color = "#6c6a64")}
+            className="transition-colors text-muted hover:text-ink"
             aria-label="Close modal"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">

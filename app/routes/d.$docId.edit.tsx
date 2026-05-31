@@ -359,16 +359,16 @@ export default function EditPage() {
   const viewUrl = `/d/${doc.id}/${activeTab?.slug ?? ""}`;
 
   return (
-    <div className="flex flex-col h-screen" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
+    <div className="flex flex-col h-screen bg-canvas text-ink">
       {/* Top bar */}
-      <header className="backdrop-blur-md px-4 py-3 flex items-center gap-4 shrink-0 z-10 border-b" style={{ backgroundColor: "rgba(250,249,245,0.9)", borderColor: "#e6dfd8" }}>
+      <header className="backdrop-blur-md px-4 py-3 flex items-center gap-4 shrink-0 z-10 border-b bg-canvas/90 border-hairline">
         <Link to="/" className="flex items-center gap-2 group shrink-0">
-          <div className="w-5 h-5 rounded flex items-center justify-center shadow transition-all" style={{ background: "linear-gradient(to bottom right, #cc785c, #a9583e)" }}>
+          <div className="w-5 h-5 rounded flex items-center justify-center shadow transition-all logo-gradient">
             <span className="text-white font-bold text-[10px] font-mono">&lt;/&gt;</span>
           </div>
-          <span className="text-sm font-semibold tracking-wide transition-colors" style={{ color: "#3d3d3a" }}>html-docs</span>
+          <span className="text-sm font-semibold tracking-wide transition-colors text-body">html-docs</span>
         </Link>
-        <div className="h-4 w-px shrink-0" style={{ backgroundColor: "#e6dfd8" }}></div>
+        <div className="h-4 w-px shrink-0 bg-hairline"></div>
         <input
           value={docTitle}
           onChange={(e) => {
@@ -378,39 +378,32 @@ export default function EditPage() {
             docTitleLockedRef.current = true;
           }}
           onBlur={save}
-          className="flex-1 bg-transparent text-sm font-medium focus:outline-none border-b border-transparent px-1 min-w-0 transition-colors"
-          style={{ color: "#252523" }}
+          className="flex-1 bg-transparent text-sm font-medium focus:outline-none border-b border-transparent px-1 min-w-0 transition-colors text-body-strong"
           placeholder="Untitled document"
         />
         <div className="flex items-center gap-3 shrink-0">
-          {!saved && !saving && <span className="text-xs font-medium flex items-center gap-1" style={{ color: "#d97706" }}><span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "#d97706" }}></span>Unsaved</span>}
-          {saving && <span className="text-xs font-medium flex items-center gap-1" style={{ color: "#cc785c" }}><span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: "#cc785c" }}></span>Saving...</span>}
-          {saved && !saving && <span className="text-xs font-medium" style={{ color: "#8e8b82" }}>Saved</span>}
+          {!saved && !saving && <span className="text-xs font-medium flex items-center gap-1 text-amber-600"><span className="w-1.5 h-1.5 rounded-full bg-amber-600"></span>Unsaved</span>}
+          {saving && <span className="text-xs font-medium flex items-center gap-1 text-primary"><span className="w-1.5 h-1.5 rounded-full animate-pulse bg-primary"></span>Saving...</span>}
+          {saved && !saving && <span className="text-xs font-medium text-subtle">Saved</span>}
 
-          <div className="hidden sm:flex rounded border p-0.5 ml-2" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
-            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "code" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>Code</button>
-            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "split" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>Split</button>
-            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors`} style={layout === "preview" ? { backgroundColor: "#efe9de", color: "#141413" } : { color: "#8e8b82" }}>View</button>
+          <div className="hidden sm:flex rounded border p-0.5 ml-2 bg-surface border-hairline">
+            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "code" ? "bg-card text-ink" : "text-subtle"}`}>Code</button>
+            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "split" ? "bg-card text-ink" : "text-subtle"}`}>Split</button>
+            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "preview" ? "bg-card text-ink" : "text-subtle"}`}>View</button>
           </div>
 
           <a href={viewUrl} target="_blank" rel="noopener noreferrer"
-            className="hidden sm:flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2 border"
-            style={{ backgroundColor: "#efe9de", borderColor: "#e6dfd8", color: "#3d3d3a" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#e8e0d2")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.backgroundColor = "#efe9de")}
+            className="hidden sm:flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2 border bg-card border-hairline text-body hover:bg-strong"
           >
-            Publish <span style={{ color: "#6c6a64" }}>↗</span>
+            Publish <span className="text-muted">↗</span>
           </a>
           <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${viewUrl}`)}
-            className="text-xs font-medium px-2 py-1.5 rounded-md transition-colors"
-            style={{ color: "#6c6a64" }}
-            onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = "#141413")}
-            onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = "#6c6a64")}
+            className="text-xs font-medium px-2 py-1.5 rounded-md transition-colors text-muted hover:text-ink"
           >
             Copy link
           </button>
           {!isOwner && (
-            <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors" style={{ color: "#cc785c" }}>
+            <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors text-primary">
               Sign in to claim →
             </Link>
           )}
@@ -432,11 +425,14 @@ export default function EditPage() {
         </div>
 
         {/* Mobile Tab Bar */}
-        <div className="sm:hidden flex overflow-x-auto hide-scrollbar border-b" style={{ backgroundColor: "#f5f0e8", borderColor: "#e6dfd8" }}>
+        <div className="sm:hidden flex overflow-x-auto hide-scrollbar border-b bg-surface border-hairline">
           {tabs.map(t => (
             <button key={t.id} onClick={() => handleTabSelect(t.id)}
-              className={`px-4 py-3 text-sm font-medium whitespace-nowrap`}
-              style={t.id === activeTabId ? { color: "#cc785c", borderBottom: "2px solid #cc785c" } : { color: "#8e8b82" }}
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap ${
+                t.id === activeTabId
+                  ? "text-primary border-b-2 border-b-primary"
+                  : "text-subtle"
+              }`}
             >
               {t.name}
             </button>
@@ -445,8 +441,8 @@ export default function EditPage() {
 
         {/* Monaco editor */}
         {(layout === "split" || layout === "code") && (
-          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0" style={{ borderColor: "#e6dfd8" }}>
-            <Suspense fallback={<div className="flex items-center justify-center h-full" style={{ color: "#8e8b82" }}>Loading editor…</div>}>
+          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading editor…</div>}>
               <Editor
                 value={activeTab?.html ?? ""}
                 onChange={handleHtmlChange}
@@ -458,8 +454,8 @@ export default function EditPage() {
 
         {/* Preview */}
         {(layout === "split" || layout === "preview") && (
-          <div className={`flex-1 overflow-hidden flex flex-col ${layout === "split" ? "sm:border-l" : ""}`} style={{ backgroundColor: "#faf9f5", borderColor: "#e6dfd8" }}>
-            <Suspense fallback={<div className="flex items-center justify-center h-full" style={{ color: "#8e8b82" }}>Loading…</div>}>
+          <div className={`flex-1 overflow-hidden flex flex-col bg-canvas ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading…</div>}>
               <PreviewIframe html={previewHtml} />
             </Suspense>
           </div>

@@ -22,10 +22,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (!parsed.success) return { error: "Invalid email address." };
 
   const ip = getClientIp(request);
-  const [emailOk, ipOk] = await Promise.all([
-    checkMagicEmailRate(email),
-    checkMagicIpRate(ip),
-  ]);
+  const emailOk = checkMagicEmailRate(email);
+  const ipOk = checkMagicIpRate(ip);
   if (!emailOk || !ipOk)
     return { error: "Too many requests. Please try again later." };
 
@@ -61,13 +59,13 @@ export default function MagicLinkPage() {
   const errorMessage = ('error' in (actionData ?? {}) ? (actionData as { error: string }).error : null) ?? urlError;
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#faf9f5", color: "#141413" }}>
+    <main className="min-h-screen flex items-center justify-center px-4 bg-canvas text-ink">
       <div className="w-full max-w-md">
-        <Link to="/" className="block text-sm font-semibold mb-8 transition-colors" style={{ color: "#cc785c" }}>
+        <Link to="/" className="block text-sm font-semibold mb-8 transition-colors text-primary">
           ← html-docs
         </Link>
-        <h1 className="text-2xl font-bold mb-2" style={{ color: "#141413" }}>Sign in</h1>
-        <p className="text-sm mb-6" style={{ color: "#6c6a64" }}>
+        <h1 className="text-2xl font-bold mb-2 text-ink">Sign in</h1>
+        <p className="text-sm mb-6 text-muted">
           Enter your email and we'll send you a magic link to sign in.
         </p>
 
@@ -87,15 +85,11 @@ export default function MagicLinkPage() {
               name="email"
               required
               placeholder="you@example.com"
-              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 border transition-colors"
-              style={{ backgroundColor: "white", borderColor: "#e6dfd8", color: "#141413" }}
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 border transition-colors bg-white border-hairline text-ink"
             />
             <button
               type="submit"
-              className="w-full text-white font-medium py-2.5 rounded-lg transition-colors"
-              style={{ backgroundColor: "#cc785c" }}
-              onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#a9583e")}
-              onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#cc785c")}
+              className="w-full text-white font-medium py-2.5 rounded-lg transition-colors bg-primary hover:bg-primary-dark"
             >
               Send magic link
             </button>
