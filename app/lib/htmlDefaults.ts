@@ -25,7 +25,7 @@ const DEFAULT_STYLE = `<style>
     --border-radius-md:           8px;
     --border-radius-lg:           12px;
   }
-  body { font-family: inherit; background-color: #F9F9F7; }
+  body { font-family: inherit; background-color: #F9F9F7; padding: 8px 16px; }
 
   /* Layout helpers */
   .g2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
