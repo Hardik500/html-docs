@@ -3,6 +3,7 @@ import { Form, Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
+import { createTimer } from "~/lib/perf.server";
 import { Modal } from "~/components/Modal";
 
 interface DocRow {
@@ -21,14 +22,16 @@ export const meta: Route.MetaFunction = () => [{ title: "Dashboard — html-docs
 // Replaced DocCard with list item inside Dashboard
 
 export async function loader({ request }: Route.LoaderArgs) {
+  const t = createTimer("dashboard");
   const user = await getUser(request);
+  t.mark("auth");
   if (!user) return redirect("/auth/magic");
 
   const docsResult = await query<DocRow & { html: string }>(
     `SELECT d.id, d.title, d.view_count, d.last_activity_at, d.created_at,
             COUNT(t.id)::int AS tab_count,
             (SELECT t2.slug FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_slug,
-            (SELECT t2.html FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
+            (SELECT LEFT(t2.html, POSITION('<body' IN lower(t2.html)) + 8000) FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
      FROM docs d
      LEFT JOIN tabs t ON t.doc_id = d.id
      WHERE d.owner_user_id = $1
@@ -37,6 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
      LIMIT 100`,
     [user.id]
   );
+  t.mark("db");
 
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const docs = docsResult.rows.map((doc) => {
@@ -44,6 +48,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     return { ...doc, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
   });
 
+  t.end();
   return { docs, email: user.email };
 }
 

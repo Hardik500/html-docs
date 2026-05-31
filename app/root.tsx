@@ -22,10 +22,16 @@ export async function loader({ request }: Route.LoaderArgs) {
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   });
 
-  // Proactively refresh Supabase session if the access token is near expiry.
-  // Any new tokens are written into responseHeaders via the cookie setAll handler.
+  // Verify the JWT locally (cached JWKS) and only pay a network round trip to
+  // refresh when the access token is missing or near expiry. New tokens are
+  // written into responseHeaders via the cookie setAll handler.
   const { supabase } = createSupabaseServerClient(request, responseHeaders);
-  await supabase.auth.getUser();
+  const { data, error } = await supabase.auth.getClaims();
+  const exp = data?.claims?.exp;
+  const nearExpiry = error != null || typeof exp !== "number" || exp * 1000 - Date.now() < 60_000;
+  if (nearExpiry) {
+    await supabase.auth.getUser();
+  }
 
   return new Response(null, { headers: responseHeaders });
 }

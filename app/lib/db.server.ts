@@ -15,6 +15,9 @@ if (process.env.NODE_ENV === "production") {
   validateEnv();
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    // Keep TCP connections warm so queries don't pay a fresh TLS handshake to
+    // a remote Supabase host on every cold connection.
+    keepAlive: true,
     ssl:
       process.env.DATABASE_URL?.includes("localhost") ||
       process.env.DATABASE_URL?.includes(".internal")

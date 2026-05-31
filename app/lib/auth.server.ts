@@ -5,12 +5,14 @@ export async function getUser(
   request: Request
 ): Promise<{ id: string; email: string } | null> {
   const { supabase } = createSupabaseServerClient(request);
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-  if (error || !user) return null;
-  return { id: user.id, email: user.email ?? "" };
+  // Verify the JWT locally via cached JWKS (asymmetric signing keys) instead of
+  // a network round trip to the Auth server. Session refresh/persistence is
+  // handled once per request by the root loader.
+  const { data, error } = await supabase.auth.getClaims();
+  const sub = data?.claims?.sub;
+  if (error || !sub) return null;
+  const email = data.claims.email;
+  return { id: sub, email: typeof email === "string" ? email : "" };
 }
 
 export async function getUserId(request: Request): Promise<string | null> {

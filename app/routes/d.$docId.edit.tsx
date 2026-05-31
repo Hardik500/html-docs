@@ -3,6 +3,7 @@ import { useLoaderData, useFetcher, redirect, Link } from "react-router";
 import type { Route } from "./+types/d.$docId.edit";
 import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
+import { createTimer } from "~/lib/perf.server";
 import { newTabId, newEditToken } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle } from "~/lib/titleExtract";
@@ -18,28 +19,34 @@ const MAX_TABS = 20;
 
 export async function loader({ params, request }: Route.LoaderArgs) {
   const { docId } = params;
+  const t = createTimer("edit");
 
-  const docResult = await query<{
-    id: string; title: string; edit_token: string; owner_user_id: string | null;
-  }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1", [docId]);
+  const tokenFromCookie =
+    request.headers.get("cookie")?.match(new RegExp(`anon_edit_${docId}=([^;]+)`))?.[1] ?? null;
+
+  // Run both queries and auth in parallel — they have no data dependency, so
+  // this collapses three sequential remote round trips into one.
+  const [docResult, tabsResult, userId] = await Promise.all([
+    query<{
+      id: string; title: string; edit_token: string; owner_user_id: string | null;
+    }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1", [docId])
+      .finally(() => t.mark("q_doc")),
+    query<TabItem & { html: string }>(
+      "SELECT id, slug, name, position, html FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
+      [docId]
+    ).finally(() => t.mark("q_tabs")),
+    getUserId(request).finally(() => t.mark("auth")),
+  ]);
+  t.mark("gathered");
 
   if (!docResult.rows.length) throw new Response("Document not found", { status: 404 });
   const doc = docResult.rows[0];
-
-  const userId = await getUserId(request);
-  const tokenFromCookie =
-    request.headers.get("cookie")?.match(new RegExp(`anon_edit_${docId}=([^;]+)`))?.[1] ?? null;
 
   const authorized =
     (userId && userId === doc.owner_user_id) ||
     tokenFromCookie === doc.edit_token;
 
   if (!authorized) throw new Response("Forbidden", { status: 403 });
-
-  const tabsResult = await query<TabItem & { html: string }>(
-    "SELECT id, slug, name, position, html FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
-    [docId]
-  );
 
   // Derive better names server-side so the first render is already correct —
   // no client-side flash or "reload to see name" UX.
@@ -60,6 +67,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     return tab;
   });
 
+  t.end();
   return {
     doc: { id: doc.id, title: docTitle, editToken: doc.edit_token },
     tabs,
