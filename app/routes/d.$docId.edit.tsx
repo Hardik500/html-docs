@@ -4,6 +4,7 @@ import type { Route } from "./+types/d.$docId.edit";
 import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
+import { checkSaveRate } from "~/lib/ratelimit.server";
 import { newTabId, newEditToken } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle } from "~/lib/titleExtract";
@@ -98,6 +99,10 @@ export async function action({ params, request }: Route.ActionArgs) {
     tokenFromCookie === doc.edit_token;
 
   if (!authorized) throw new Response("Forbidden", { status: 403 });
+
+  // Rate-limit saves to prevent write-flood abuse of the auto-save endpoint.
+  const saveAllowed = await checkSaveRate(docId);
+  if (!saveAllowed) throw new Response("Too many requests. Please slow down.", { status: 429 });
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > 1_100_000) throw new Response("Payload too large", { status: 413 });

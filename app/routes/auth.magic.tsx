@@ -22,8 +22,10 @@ export async function action({ request }: Route.ActionArgs) {
   if (!parsed.success) return { error: "Invalid email address." };
 
   const ip = getClientIp(request);
-  const emailOk = checkMagicEmailRate(email);
-  const ipOk = checkMagicIpRate(ip);
+  const [emailOk, ipOk] = await Promise.all([
+    checkMagicEmailRate(email),
+    checkMagicIpRate(ip),
+  ]);
   if (!emailOk || !ipOk)
     return { error: "Too many requests. Please try again later." };
 

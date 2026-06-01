@@ -20,9 +20,12 @@ export function createSupabaseServerClient(
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
+            // Force HttpOnly — Supabase SSR defaults to httpOnly: false, which
+            // would leave session tokens readable by JS (exploitable via XSS in
+            // the editor shell where unsafe-inline/unsafe-eval are required by Monaco).
             responseHeaders.append(
               "Set-Cookie",
-              serializeCookie(name, value, options)
+              serializeCookie(name, value, { ...options, httpOnly: true })
             );
           });
         },

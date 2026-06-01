@@ -34,7 +34,7 @@ export async function action({ request }: Route.ActionArgs) {
   // Rate-limit anonymous users
   if (!userId) {
     const ip = getClientIp(request);
-    const allowed = checkAnonCreateRate(ip);
+    const allowed = await checkAnonCreateRate(ip);
     if (!allowed) {
       throw new Response("Rate limit exceeded. Try again tomorrow.", {
         status: 429,

@@ -4,13 +4,18 @@ import { fileURLToPath } from "url";
 import pg from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const isInternal =
-  process.env.DATABASE_URL?.includes("localhost") ||
-  process.env.DATABASE_URL?.includes(".internal");
+const url = process.env.DATABASE_URL ?? "";
+const noSsl =
+  !url ||
+  url.includes("localhost") ||
+  url.includes("127.0.0.1") ||
+  url.includes(".internal");
 
 const pool = new pg.Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: isInternal ? false : { rejectUnauthorized: false },
+  connectionString: url || "postgres://localhost/html_docs_dev",
+  // Supabase direct connections use a self-signed cert chain not in Node's trust
+  // store — rejectUnauthorized: false keeps TLS encryption while accepting it.
+  ssl: noSsl ? false : { rejectUnauthorized: false },
 });
 
 // Ensure the tracking table exists
@@ -25,7 +30,7 @@ await pool.query(`
 const applied = await pool.query("SELECT filename FROM schema_migrations");
 const appliedSet = new Set(applied.rows.map((r) => r.filename));
 
-const migrations = ["0001_init.sql", "0002_indexes_cleanup.sql", "0003_supabase_auth.sql"];
+const migrations = ["0001_init.sql", "0002_indexes_cleanup.sql", "0003_supabase_auth.sql", "0004_rate_limits.sql"];
 for (const file of migrations) {
   if (appliedSet.has(file)) {
     console.log(`Skipping (already applied): ${file}`);

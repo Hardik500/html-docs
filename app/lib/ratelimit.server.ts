@@ -1,10 +1,7 @@
 import { createHash } from "crypto";
+import { query } from "./db.server";
 
 const IP_HASH_SALT = process.env.IP_HASH_SALT || "default-salt-change-me";
-
-// In-memory store: key → { count, resetAt }
-// Resets on process restart/deploy. Acceptable for soft rate limiting.
-const store = new Map<string, { count: number; resetAt: number }>();
 
 function hashIp(ip: string): string {
   return createHash("sha256")
@@ -21,35 +18,50 @@ function currentMinuteUtc(): string {
   return new Date().toISOString().slice(0, 16);
 }
 
-function checkAndIncrement(key: string, limit: number, resetAt: number): boolean {
-  const now = Date.now();
-  const entry = store.get(key);
-  if (!entry || entry.resetAt <= now) {
-    store.set(key, { count: 1, resetAt });
-    return true;
-  }
-  entry.count += 1;
-  return entry.count <= limit;
+/**
+ * Atomically increment a rate-limit counter in Postgres and return whether
+ * the request is within the allowed limit.
+ *
+ * Uses an upsert so expired rows are reset in-place rather than deleted first.
+ * Safe under concurrent requests — Postgres serialises the ON CONFLICT update.
+ */
+async function checkAndIncrement(key: string, limit: number, resetAt: Date): Promise<boolean> {
+  const result = await query<{ count: number }>(
+    `INSERT INTO rate_limits (key, count, reset_at)
+     VALUES ($1, 1, $2)
+     ON CONFLICT (key) DO UPDATE
+       SET count    = CASE WHEN rate_limits.reset_at <= now() THEN 1 ELSE rate_limits.count + 1 END,
+           reset_at = CASE WHEN rate_limits.reset_at <= now() THEN $2 ELSE rate_limits.reset_at END
+     RETURNING count`,
+    [key, resetAt.toISOString()]
+  );
+  return result.rows[0].count <= limit;
 }
 
 /** 50 anon doc creates per IP per day */
-export function checkAnonCreateRate(ip: string): boolean {
+export async function checkAnonCreateRate(ip: string): Promise<boolean> {
   const key = `anon:ip:${hashIp(ip)}:${todayUtc()}`;
   const resetAt = new Date();
   resetAt.setUTCHours(24, 0, 0, 0);
-  return checkAndIncrement(key, 50, resetAt.getTime());
+  return checkAndIncrement(key, 50, resetAt);
 }
 
 /** 5 magic-link requests per email per minute */
-export function checkMagicEmailRate(email: string): boolean {
+export async function checkMagicEmailRate(email: string): Promise<boolean> {
   const key = `magic:email:${email}:${currentMinuteUtc()}`;
-  return checkAndIncrement(key, 5, Date.now() + 60_000);
+  return checkAndIncrement(key, 5, new Date(Date.now() + 60_000));
 }
 
 /** 20 magic-link requests per IP per day */
-export function checkMagicIpRate(ip: string): boolean {
+export async function checkMagicIpRate(ip: string): Promise<boolean> {
   const key = `magic:ip:${hashIp(ip)}:${todayUtc()}`;
   const resetAt = new Date();
   resetAt.setUTCHours(24, 0, 0, 0);
-  return checkAndIncrement(key, 20, resetAt.getTime());
+  return checkAndIncrement(key, 20, resetAt);
+}
+
+/** 30 saves per doc per minute — prevents write-flood abuse of the auto-save endpoint */
+export async function checkSaveRate(docId: string): Promise<boolean> {
+  const key = `save:doc:${docId}:${currentMinuteUtc()}`;
+  return checkAndIncrement(key, 30, new Date(Date.now() + 60_000));
 }
