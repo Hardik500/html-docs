@@ -8,6 +8,7 @@ import { newTabId, newEditToken } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
+import { ThemeToggle } from "~/components/ThemeToggle";
 
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
@@ -492,6 +493,7 @@ export default function EditPage() {
           >
             Copy link
           </button>
+          <ThemeToggle />
           {!isOwner && (
             <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors text-primary">
               Sign in to claim →

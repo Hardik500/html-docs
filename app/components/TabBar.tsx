@@ -24,7 +24,7 @@ export default function TabBar({ tabs, activeSlug, docId }: TabBarProps) {
             to={`/d/${docId}/${tab.slug}`}
             className={`px-4 py-2 text-sm font-medium whitespace-nowrap rounded-t-md transition-all relative ${
               isActive
-                ? "bg-white text-ink"
+                ? "bg-paper text-ink"
                 : "text-muted hover:text-body-strong hover:bg-card"
             }`}
           >

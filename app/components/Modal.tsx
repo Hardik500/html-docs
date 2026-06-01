@@ -31,7 +31,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
       />
       
       {/* Modal Content */}
-      <div className="rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 border bg-white border-hairline">
+      <div className="rounded-xl shadow-2xl w-full max-w-md overflow-hidden relative z-10 border bg-paper border-hairline">
         <div className="px-6 py-4 flex items-center justify-between border-b border-hairline">
           <h2 className="text-lg font-semibold text-ink">{title}</h2>
           <button

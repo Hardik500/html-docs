@@ -98,7 +98,7 @@ function SortableTab({
           onBlur={commitRename}
           onKeyDown={handleKeyDown}
           maxLength={200}
-          className="flex-1 text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary min-w-0 border bg-white text-ink border-hairline"
+          className="flex-1 text-sm rounded px-1.5 py-0.5 outline-none focus:ring-1 focus:ring-primary min-w-0 border bg-paper text-ink border-hairline"
           onClick={(e) => e.stopPropagation()}
         />
       ) : (

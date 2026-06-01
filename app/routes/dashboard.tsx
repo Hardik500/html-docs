@@ -6,6 +6,7 @@ import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { Modal } from "~/components/Modal";
+import { ThemeToggle } from "~/components/ThemeToggle";
 
 interface DocRow {
   id: string;
@@ -81,6 +82,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm font-medium text-muted">{email}</span>
+          <ThemeToggle />
           <Form method="post" action="/auth/logout">
             <button type="submit" className="text-sm font-medium transition-colors text-muted hover:text-ink">Sign out</button>
           </Form>
@@ -117,7 +119,7 @@ export default function Dashboard() {
               const editHref = `/d/${doc.id}/edit`;
 
               return (
-                <div key={doc.id} className={`group flex flex-col rounded-xl shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 relative border bg-white border-hairline ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
+                <div key={doc.id} className={`group flex flex-col rounded-xl shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 relative border bg-paper border-hairline ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
 
                   {/* Thumbnail / Iframe preview */}
                   <Link to={editHref} className="relative aspect-4/5 block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
@@ -139,7 +141,7 @@ export default function Dashboard() {
                   </Link>
 
                   {/* Card Footer / Details */}
-                  <div className="p-4 flex flex-col flex-1 relative rounded-b-xl bg-white">
+                  <div className="p-4 flex flex-col flex-1 relative rounded-b-xl bg-paper">
                     <div className="flex items-start justify-between gap-2 mb-3">
                       <Link to={editHref} className="font-semibold transition-colors line-clamp-1 flex-1 text-body-strong hover:text-primary">
                         {doc.title}
@@ -161,7 +163,7 @@ export default function Dashboard() {
                         </button>
 
                         {openMenuId === doc.id && (
-                          <div className="absolute right-0 top-full mt-1 w-36 rounded-lg shadow-xl py-1 z-50 border bg-white border-hairline">
+                          <div className="absolute right-0 top-full mt-1 w-36 rounded-lg shadow-xl py-1 z-50 border bg-paper border-hairline">
                             <Link to={viewHref} target="_blank" className="flex items-center gap-2 w-full text-left px-3 py-2 text-sm transition-colors text-body hover:bg-surface">
                               <svg className="w-4 h-4 text-subtle" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
                               Preview
@@ -233,7 +235,7 @@ export default function Dashboard() {
                 id="rename-title"
                 name="title"
                 defaultValue={renameModalDoc.title}
-                className="w-full rounded-lg px-4 py-2 focus:outline-none focus:ring-2 transition-all border bg-white border-hairline text-ink"
+                className="w-full rounded-lg px-4 py-2 focus:outline-none focus:ring-2 transition-all border bg-paper border-hairline text-ink"
                 autoFocus
                 required
               />

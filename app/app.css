@@ -18,6 +18,9 @@
   --color-muted: #6c6a64;        /* muted text        */
   --color-subtle: #8e8b82;       /* placeholders      */
 
+  /* ── Elevated "white" surfaces (modals, inputs, cards) */
+  --color-paper: #ffffff;
+
   /* ── Brand ─────────────────────────────────────────── */
   --color-primary: #cc785c;      /* coral CTA         */
   --color-primary-dark: #a9583e; /* coral hover       */
@@ -27,6 +30,26 @@
   --color-amber: #e8a55a;
 }
 
+/* ── Dark mode — all Tailwind tokens auto-update ──────── */
+/* (bg-canvas, text-ink, border-hairline, etc. inherit the
+   overridden vars — no dark: prefixes needed on existing code) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+.dark {
+  --color-canvas: #1a1815;       /* page background   */
+  --color-surface: #222019;      /* panels / sidebars */
+  --color-card: #2b2720;         /* cards, active bg  */
+  --color-strong: #353029;       /* hover / pressed   */
+  --color-hairline: #3d3830;     /* borders           */
+  --color-paper: #2e2b24;        /* elevated surfaces */
+  --color-ink: #f0ebe1;          /* primary text      */
+  --color-body-strong: #d4cec4;  /* bold body         */
+  --color-body: #b8b2a7;         /* body text         */
+  --color-muted: #8e8b82;        /* muted (unchanged) */
+  --color-subtle: #6c6a64;       /* subtle (unchanged)*/
+  color-scheme: dark;
+}
+
 html,
 body {
   background-color: var(--color-canvas);
@@ -34,27 +57,24 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   color-scheme: light;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
+.dark, .dark body { color-scheme: dark; }
 
 /* Custom Scrollbar for Webkit */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.15);
   border-radius: 4px;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.25);
-}
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
-}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.25); }
+* { scrollbar-width: thin; scrollbar-color: rgba(0, 0, 0, 0.15) transparent; }
+
+/* Dark scrollbars */
+.dark ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); }
+.dark ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.22); }
+.dark * { scrollbar-color: rgba(255, 255, 255, 0.12) transparent; }
 
 /* Utilities */
 @utility logo-gradient {

@@ -4,6 +4,7 @@ import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
 import TabBar from "~/components/TabBar";
 import ShareBox from "~/components/ShareBox";
+import { ThemeToggle } from "~/components/ThemeToggle";
 
 interface Tab {
   id: string;
@@ -93,6 +94,7 @@ export default function ViewerPage() {
           <span className="text-sm font-medium truncate text-body">{doc.title}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           <ShareBox docId={doc.id} tabSlug={activeTab.slug} />
           {canEdit && (
             <Link

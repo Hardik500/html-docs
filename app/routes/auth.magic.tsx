@@ -87,7 +87,7 @@ export default function MagicLinkPage() {
               name="email"
               required
               placeholder="you@example.com"
-              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 border transition-colors bg-white border-hairline text-ink"
+              className="w-full rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 border transition-colors bg-paper border-hairline text-ink"
             />
             <button
               type="submit"

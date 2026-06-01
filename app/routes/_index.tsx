@@ -1,4 +1,5 @@
 import { Form, Link, redirect } from "react-router";
+import { ThemeToggle } from "~/components/ThemeToggle";
 import type { Route } from "./+types/_index";
 import { useState, lazy, Suspense, useEffect, useRef } from "react";
 import PreviewIframe from "~/components/PreviewIframe";
@@ -66,7 +67,8 @@ export default function Landing() {
           </div>
           <span className="font-semibold text-sm tracking-wide text-body-strong">html-docs</span>
         </div>
-        <div className="flex items-center gap-6">
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
           <Link to="/dashboard" className="text-sm font-medium transition-colors text-muted hover:text-ink">
             Sign in
           </Link>
