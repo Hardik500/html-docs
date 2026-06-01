@@ -381,6 +381,10 @@ export default function EditPage() {
   function handleDelete(id: string) {
     if (tabs.length <= 1) return;
     markDirty();
+    // Only queue real DB IDs for deletion — temp "new:..." IDs were never persisted.
+    if (!id.startsWith("new:")) {
+      tabsToDeleteRef.current.add(id);
+    }
     const filtered = tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, position: i }));
     setTabs(filtered);
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
