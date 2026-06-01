@@ -235,11 +235,6 @@ export default function EditPage() {
       ...Array.from(tabsToDeleteRef.current).map(id => ({ id, _delete: true, name: "", position: 0 }))
     ];
 
-    console.log('[save]', {
-      tabsToDelete: Array.from(tabsToDeleteRef.current),
-      tabsPayload: tabsPayload.map(t => ({ id: t.id, name: t.name, _delete: (t as any)._delete }))
-    });
-
     // Prevent duplicate saves of identical payloads
     const payload = JSON.stringify({ title: docTitleRef.current, tabs: tabsPayload });
     if (payload === lastSavePayloadRef.current) return;
