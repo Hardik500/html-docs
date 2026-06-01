@@ -197,6 +197,11 @@ export default function EditPage() {
   // Track tab IDs to delete on next save
   const tabsToDeleteRef = useRef<Set<string>>(new Set());
 
+  // Track "new:..." temp IDs that were deleted while a save was already in flight.
+  // If the in-flight save creates a real DB row for one of these, the completion
+  // handler will add the real ID to tabsToDeleteRef so it gets cleaned up.
+  const deletedTempIdsRef = useRef<Set<string>>(new Set());
+
   // Track last saved state to prevent duplicate saves
   const lastSavePayloadRef = useRef<string>("");
 
@@ -266,12 +271,28 @@ export default function EditPage() {
 
     const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
     if (data?.ok) {
-      // Clear the delete queue after successful save
+      // Clear the delete queue — these were included in the just-completed save.
       tabsToDeleteRef.current.clear();
 
-      // Only mark clean if no new edits arrived while the request was in flight.
-      // If newChangesRef is true, keep saved=false so autosave retries immediately.
-      if (!newChangesRef.current) setSaved(true);
+      // If the server created real rows for tabs that were deleted from the UI
+      // while this save was in flight, queue those real IDs for immediate deletion.
+      // Example: user creates a tab, save fires, user deletes the tab before the
+      // response arrives — the server created the row but the UI no longer has it.
+      let orphanedDeletions = false;
+      if (data.createdTabs?.length) {
+        for (const { tempId, id } of data.createdTabs) {
+          if (deletedTempIdsRef.current.has(tempId)) {
+            tabsToDeleteRef.current.add(id);
+            deletedTempIdsRef.current.delete(tempId);
+            orphanedDeletions = true;
+          }
+        }
+      }
+
+      // Only mark clean if no new edits arrived while the request was in flight,
+      // and there are no orphaned deletions still needing a follow-up save.
+      if (!newChangesRef.current && !orphanedDeletions) setSaved(true);
+
       // Swap client-side "new:..." temp IDs for real IDs the server assigned.
       if (data.createdTabs?.length) {
         const map = new Map(data.createdTabs.map((t) => [t.tempId, t]));
@@ -386,9 +407,14 @@ export default function EditPage() {
   function handleDelete(id: string) {
     if (tabs.length <= 1) return;
     markDirty();
-    // Only queue real DB IDs for deletion — temp "new:..." IDs were never persisted.
     if (!id.startsWith("new:")) {
+      // Real DB ID — queue for deletion on next save.
       tabsToDeleteRef.current.add(id);
+    } else {
+      // Temp ID — the tab may not be in the DB yet, but a save could be in flight
+      // right now that will create it. Track it so the completion handler can queue
+      // the real ID for deletion if the server ends up creating it.
+      deletedTempIdsRef.current.add(id);
     }
     const filtered = tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, position: i }));
     setTabs(filtered);
