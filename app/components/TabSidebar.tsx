@@ -123,7 +123,7 @@ function SortableTab({
           {canDelete && (
             <button
               onClick={() => onDelete(tab.id)}
-              className="p-1 rounded transition-colors text-subtle hover:text-red-600 hover:bg-red-50"
+              className="p-1 rounded transition-colors text-subtle hover:text-red-500 hover:bg-red-500/10"
               title="Delete tab"
             >
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
