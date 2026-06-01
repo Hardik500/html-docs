@@ -31,7 +31,9 @@ export async function action({ request }: Route.ActionArgs) {
   // the client. Without it, Supabase rejects the callback as otp_expired.
   const responseHeaders = new Headers();
   const { supabase } = createSupabaseServerClient(request, responseHeaders);
-  const appUrl = process.env.APP_URL || "http://localhost:5173";
+  // Strip trailing slash to prevent double-slash in emailRedirectTo (e.g. APP_URL="https://host/" → "https://host//auth/callback")
+  // Fall back to the request's own origin so the callback URL is always correct even if APP_URL is missing.
+  const appUrl = (process.env.APP_URL || new URL(request.url).origin).replace(/\/+$/, "");
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
