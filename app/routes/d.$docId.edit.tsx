@@ -15,7 +15,7 @@ const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
 
 const MAX_HTML_BYTES = 500_000;   // 500 KB per HTML/MD tab
-const MAX_PDF_BYTES  = 5_500_000; // ~4 MB PDF → ~5.3 MB base64
+const MAX_PDF_BYTES  = 2_800_000; // 2 MB PDF → ~2.7 MB base64 (Vercel limit is 4.5 MB total)
 const MAX_TABS = 20;
 
 // ── Loader ──────────────────────────────────────────────────────────────────
@@ -113,7 +113,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!saveAllowed) throw new Response("Too many requests. Please slow down.", { status: 429 });
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 6_000_000) throw new Response("Payload too large", { status: 413 });
+  if (contentLength > 4_000_000) throw new Response("Payload too large", { status: 413 });
 
   const body = await request.json() as {
     intent: string;
@@ -436,17 +436,30 @@ export default function EditPage() {
   }
 
   function handleDelete(id: string) {
-    if (tabs.length <= 1) return;
     markDirty();
+    // Queue the outgoing tab for deletion on the next save.
     if (!id.startsWith("new:")) {
-      // Real DB ID — queue for deletion on next save.
       tabsToDeleteRef.current.add(id);
     } else {
-      // Temp ID — the tab may not be in the DB yet, but a save could be in flight
-      // right now that will create it. Track it so the completion handler can queue
-      // the real ID for deletion if the server ends up creating it.
+      // Temp ID — track so the completion handler can clean up if the server
+      // created a real row while the delete was queued.
       deletedTempIdsRef.current.add(id);
     }
+
+    if (tabs.length <= 1) {
+      // Can't leave zero tabs — replace with a fresh blank HTML tab so the
+      // user can escape a broken/PDF-only state without reloading.
+      const name = "Untitled";
+      const tempId = `new:${Date.now()}`;
+      const slug = dedupeSlug(slugify(name), new Set());
+      const html = `<!DOCTYPE html>\n<html>\n<head><title>${name}</title></head>\n<body>\n</body>\n</html>`;
+      tabAutoNamesRef.current.set(tempId, name);
+      setTabs([{ id: tempId, slug, name, position: 0, html, content_type: "html" }]);
+      setActiveTabId(tempId);
+      setPreviewHtml(html);
+      return;
+    }
+
     const filtered = tabs.filter((t) => t.id !== id).map((t, i) => ({ ...t, position: i }));
     setTabs(filtered);
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }

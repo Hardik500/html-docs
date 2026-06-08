@@ -164,6 +164,7 @@ export default function TabSidebar({
   onDropFiles,
 }: TabSidebarProps) {
   const [dragOver, setDragOver] = useState(false);
+  const [dropError, setDropError] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(256); // default slightly wider than w-56
   const isResizing = useRef(false);
   const resizeStartX = useRef(0);
@@ -247,8 +248,13 @@ export default function TabSidebar({
 
       try {
         if (isPdf) {
-          // Cap at 4 MB before base64 inflation (~5.3 MB encoded)
-          if (file.size > 4 * 1024 * 1024) continue;
+          // Cap at 2 MB — base64 inflates to ~2.7 MB, keeping the total
+          // save payload well under Vercel's 4.5 MB serverless limit.
+          if (file.size > 2 * 1024 * 1024) {
+            setDropError(`"${file.name}" is too large — PDF must be under 2 MB`);
+            setTimeout(() => setDropError(null), 5000);
+            continue;
+          }
           const base64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => resolve((reader.result as string).split(",")[1]);
@@ -335,6 +341,13 @@ export default function TabSidebar({
             ))}
           </SortableContext>
         </DndContext>
+
+        {/* Drop error */}
+        {dropError && (
+          <div className="mx-3 px-2 py-1.5 rounded-md bg-red-500/10 border border-red-500/30">
+            <p className="text-[10px] text-red-500 font-medium leading-tight">{dropError}</p>
+          </div>
+        )}
 
         {/* Drag & Drop Instructions */}
         {tabs.length < 20 && (
