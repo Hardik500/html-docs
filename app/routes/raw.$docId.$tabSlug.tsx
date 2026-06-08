@@ -17,6 +17,16 @@ export async function loader({ params }: Route.LoaderArgs) {
   }
 
   const { html, content_type } = result.rows[0];
+
+  if (content_type === "pdf") {
+    // html column stores the raw base64 string for PDFs — decode to binary.
+    const binary = Uint8Array.from(atob(html), (c) => c.charCodeAt(0));
+    return new Response(binary, {
+      status: 200,
+      headers: { "Content-Type": "application/pdf" },
+    });
+  }
+
   const document = content_type === "markdown" ? markdownToHtml(html) : html;
 
   return new Response(injectDefaultStyles(document), {

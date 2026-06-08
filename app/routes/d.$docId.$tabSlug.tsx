@@ -12,6 +12,7 @@ interface Tab {
   slug: string;
   name: string;
   position: number;
+  content_type: "html" | "markdown" | "pdf";
 }
 
 interface LoaderData {
@@ -39,7 +40,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const doc = docResult.rows[0];
 
   const tabsResult = await query<Tab>(
-    "SELECT id, slug, name, position FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
+    "SELECT id, slug, name, position, content_type FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
     [docId]
   );
   const tabs = tabsResult.rows;
@@ -132,17 +133,27 @@ export default function ViewerPage() {
       {/* Tab bar */}
       <TabBar tabs={tabs} activeSlug={activeTab.slug} docId={doc.id} />
 
-      {/* Iframe */}
+      {/* Content */}
       <div className="flex-1 overflow-hidden bg-canvas">
-        <iframe
-          ref={iframeRef}
-          key={activeTab.slug}
-          src={`/raw/${doc.id}/${activeTab.slug}`}
-          sandbox="allow-scripts"
-          className="w-full h-full border-0"
-          title={activeTab.name}
-          onLoad={handleIframeLoad}
-        />
+        {activeTab.content_type === "pdf" ? (
+          <embed
+            key={activeTab.slug}
+            src={`/raw/${doc.id}/${activeTab.slug}`}
+            type="application/pdf"
+            className="w-full h-full border-0"
+            title={activeTab.name}
+          />
+        ) : (
+          <iframe
+            ref={iframeRef}
+            key={activeTab.slug}
+            src={`/raw/${doc.id}/${activeTab.slug}`}
+            sandbox="allow-scripts"
+            className="w-full h-full border-0"
+            title={activeTab.name}
+            onLoad={handleIframeLoad}
+          />
+        )}
       </div>
 
       {/* Footer */}

@@ -5,7 +5,7 @@ import { markdownToHtml } from "~/lib/markdown";
 interface PreviewIframeProps {
   html: string;
   title?: string;
-  contentType?: "html" | "markdown";
+  contentType?: "html" | "markdown" | "pdf";
 }
 
 interface FrameState {
@@ -53,6 +53,7 @@ function useIsDark() {
 }
 
 export default function PreviewIframe({ html, title = "Preview", contentType = "html" }: PreviewIframeProps) {
+  // All hooks must run unconditionally regardless of contentType.
   const isDark = useIsDark();
   const isDarkRef = useRef(isDark);
   useEffect(() => { isDarkRef.current = isDark; }, [isDark]);
@@ -61,6 +62,20 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html: resolvedHtml, ready: true }]);
   const nextId = useRef(1);
   const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());
+
+  // PDF: bypass the iframe crossfade stack entirely — embed renders natively in the browser.
+  if (contentType === "pdf") {
+    return (
+      <div className="relative w-full h-full bg-canvas">
+        <embed
+          src={`data:application/pdf;base64,${html}`}
+          type="application/pdf"
+          className="absolute inset-0 w-full h-full border-0"
+          title={title}
+        />
+      </div>
+    );
+  }
 
   // When html changes, push a new background frame (ready=false).
   // The old frame(s) remain visible underneath until the new one fades in.
