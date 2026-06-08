@@ -76,7 +76,7 @@ function SortableTab({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-2 rounded-md cursor-pointer text-sm font-medium transition-colors ${
+      className={`group flex items-center gap-2 px-3 py-1 rounded-md cursor-pointer text-sm font-medium transition-colors ${
         isActive ? "bg-card text-ink shadow-sm" : "text-muted hover:bg-card hover:text-body-strong"
       }`}
     >
@@ -254,7 +254,7 @@ export default function TabSidebar({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-0.5 flex flex-col">
+      <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 flex flex-col">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -280,22 +280,14 @@ export default function TabSidebar({
 
         {/* Drag & Drop Instructions */}
         {tabs.length < 20 && (
-          <div className={`mt-auto pt-4 px-3 py-4 rounded-lg border-2 border-dashed transition-all ${
+          <div className={`mt-auto px-3 py-2 rounded-lg border border-dashed transition-all ${
             dragOver
               ? "border-primary bg-primary/8 text-primary"
               : "border-hairline bg-surface text-muted hover:border-primary/50 hover:text-body-strong"
           }`}>
-            <div className="flex flex-col items-center text-center">
-              <svg className="w-5 h-5 mb-2 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0 0V8m0 4H8m0 0h4m4 0h-4" />
-              </svg>
-              <p className="text-xs font-medium mb-0.5">
-                {dragOver ? "Drop files here" : "Drag HTML or MD files"}
-              </p>
-              <p className="text-[10px] opacity-70">
-                {tabs.length === 0 ? "or click + Add to create one" : `${20 - tabs.length} slot${20 - tabs.length === 1 ? "" : "s"} available`}
-              </p>
-            </div>
+            <p className="text-[10px] text-center font-medium">
+              {dragOver ? "Drop files here" : "Drag HTML or MD files"}
+            </p>
           </div>
         )}
       </div>
