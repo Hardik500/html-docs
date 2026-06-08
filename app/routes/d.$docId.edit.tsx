@@ -14,7 +14,8 @@ import { ThemeToggle } from "~/components/ThemeToggle";
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
 
-const MAX_HTML_BYTES = 500_000; // 500 KB per tab
+const MAX_HTML_BYTES = 500_000;   // 500 KB per HTML/MD tab
+const MAX_PDF_BYTES  = 5_500_000; // ~4 MB PDF → ~5.3 MB base64
 const MAX_TABS = 20;
 
 // ── Loader ──────────────────────────────────────────────────────────────────
@@ -58,15 +59,17 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const firstTab = tabsResult.rows[0];
   const docTitle = (() => {
     if (doc.title && !GENERIC.test(doc.title.trim())) return doc.title;
-    const derived = firstTab?.content_type === "markdown"
+    if (!firstTab || firstTab.content_type === "pdf") return doc.title;
+    const derived = firstTab.content_type === "markdown"
       ? extractMarkdownTitle(firstTab.html, "")
-      : extractTitle(firstTab?.html ?? "", "");
+      : extractTitle(firstTab.html, "");
     if (derived) { titleDerived = true; return derived; }
     return doc.title;
   })();
 
   const tabs = tabsResult.rows.map((tab) => {
     if (!GENERIC.test(tab.name.trim())) return tab;
+    if (tab.content_type === "pdf") return tab;
     const derived = tab.content_type === "markdown"
       ? extractMarkdownTitle(tab.html, "")
       : extractTitle(tab.html, "");
@@ -110,7 +113,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!saveAllowed) throw new Response("Too many requests. Please slow down.", { status: 429 });
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
-  if (contentLength > 1_100_000) throw new Response("Payload too large", { status: 413 });
+  if (contentLength > 6_000_000) throw new Response("Payload too large", { status: 413 });
 
   const body = await request.json() as {
     intent: string;
@@ -139,12 +142,16 @@ export async function action({ params, request }: Route.ActionArgs) {
       }
       // Detect new tabs: no id, or a client-side "new:..." temp id
       const isNew = !tab.id || tab.id.startsWith("new:");
-      const contentType = tab.content_type === "markdown" ? "markdown" : "html";
+      const contentType: "html" | "markdown" | "pdf" =
+        tab.content_type === "markdown" ? "markdown"
+        : tab.content_type === "pdf"    ? "pdf"
+        : "html";
       if (isNew) {
         const tabId = newTabId();
         const name = (tab.name || "New Tab").slice(0, 200);
         const html = tab.html || (contentType === "markdown"
           ? `# ${name}\n\n`
+          : contentType === "pdf" ? ""
           : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
         const existingSlugSet = new Set([...slugMap.values()]);
         const slug = dedupeSlug(slugify(name), existingSlugSet);
@@ -156,9 +163,12 @@ export async function action({ params, request }: Route.ActionArgs) {
         if (tab.id) createdTabs.push({ tempId: tab.id, id: tabId, slug });
       } else {
         const html = tab.html ?? "";
-        if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) continue;
+        const byteLen = new TextEncoder().encode(html).length;
+        if (contentType === "pdf"  && byteLen > MAX_PDF_BYTES)  continue;
+        if (contentType !== "pdf"  && byteLen > MAX_HTML_BYTES) continue;
         const name = (tab.name || (contentType === "markdown"
           ? extractMarkdownTitle(html, "Tab")
+          : contentType === "pdf" ? "PDF"
           : extractTitle(html, "Tab"))).slice(0, 200);
         await query(
           "UPDATE tabs SET name=$1, position=$2, html=$3, content_type=$4, updated_at=now(), version=version+1 WHERE id=$5 AND doc_id=$6",
@@ -442,7 +452,7 @@ export default function EditPage() {
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
   }
 
-  function handleDropFiles(files: Array<{ name: string; html: string; content_type: "html" | "markdown" }>) {
+  function handleDropFiles(files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }>) {
     const GENERIC = /^(untitled.*|tab \d+|new tab)$/i;
 
     // If we only have 1 tab and it matches a generic/placeholder name, replace it entirely
@@ -491,12 +501,14 @@ export default function EditPage() {
     // Auto-derive doc title from first dropped file if doc title is still generic
     if (GENERIC.test(docTitle.trim()) && newTabs.length > 0) {
       const first = newTabs[0];
-      const derived = first.content_type === "markdown"
-        ? extractMarkdownTitle(first.html, "")
-        : extractTitle(first.html, "");
-      if (derived) {
-        setDocTitle(derived);
-        docTitleLockedRef.current = false;
+      if (first.content_type !== "pdf") {
+        const derived = first.content_type === "markdown"
+          ? extractMarkdownTitle(first.html, "")
+          : extractTitle(first.html, "");
+        if (derived) {
+          setDocTitle(derived);
+          docTitleLockedRef.current = false;
+        }
       }
     }
 
@@ -591,8 +603,8 @@ export default function EditPage() {
           ))}
         </div>
 
-        {/* Monaco editor */}
-        {(layout === "split" || layout === "code") && (
+        {/* Monaco editor — hidden for PDF tabs */}
+        {(layout === "split" || layout === "code") && activeTab?.content_type !== "pdf" && (
           <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
             {/* Type toggle */}
             <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-[#333]">
@@ -615,6 +627,13 @@ export default function EditPage() {
                 language={activeTab?.content_type === "markdown" ? "markdown" : "html"}
               />
             </Suspense>
+          </div>
+        )}
+
+        {/* PDF view-only panel */}
+        {(layout === "split" || layout === "code") && activeTab?.content_type === "pdf" && (
+          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex items-center justify-center h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
+            <p className="text-[#888] text-sm">PDF — no source editor</p>
           </div>
         )}
 

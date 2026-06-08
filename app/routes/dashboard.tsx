@@ -50,7 +50,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const docs = docsResult.rows.map((doc) => {
     const d = new Date(doc.last_activity_at);
-    const html = doc.html
+    const html = doc.html && doc.first_tab_content_type !== "pdf"
       ? (doc.first_tab_content_type === "markdown" ? markdownToHtml(doc.html) : doc.html)
       : null;
     return { ...doc, html, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
@@ -139,7 +139,14 @@ export default function Dashboard() {
 
                   {/* Thumbnail / Iframe preview */}
                   <Link to={editHref} className="relative aspect-4/5 block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
-                    {doc.html ? (
+                    {doc.first_tab_content_type === "pdf" ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-surface text-subtle">
+                        <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                        </svg>
+                        <span className="text-xs font-bold uppercase tracking-wider text-red-400">PDF</span>
+                      </div>
+                    ) : doc.html ? (
                       <iframe
                         srcDoc={injectDefaultStyles(doc.html, isDark)}
                         sandbox="allow-scripts"
