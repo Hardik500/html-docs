@@ -5,6 +5,7 @@ import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
+import { markdownToHtml } from "~/lib/markdown";
 import { Modal } from "~/components/Modal";
 import { ThemeToggle } from "~/components/ThemeToggle";
 
@@ -17,6 +18,7 @@ interface DocRow {
   tab_count: number;
   first_slug: string | null;
   html: string | null;
+  first_tab_content_type: string | null;
 }
 
 export const meta: Route.MetaFunction = () => [{ title: "Dashboard — html-docs" }];
@@ -33,6 +35,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     `SELECT d.id, d.title, d.view_count, d.last_activity_at, d.created_at,
             COUNT(t.id)::int AS tab_count,
             (SELECT t2.slug FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_slug,
+            (SELECT t2.content_type FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_tab_content_type,
             (SELECT LEFT(t2.html, POSITION('<body' IN lower(t2.html)) + 8000) FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
      FROM docs d
      LEFT JOIN tabs t ON t.doc_id = d.id
@@ -47,7 +50,10 @@ export async function loader({ request }: Route.LoaderArgs) {
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const docs = docsResult.rows.map((doc) => {
     const d = new Date(doc.last_activity_at);
-    return { ...doc, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
+    const html = doc.html
+      ? (doc.first_tab_content_type === "markdown" ? markdownToHtml(doc.html) : doc.html)
+      : null;
+    return { ...doc, html, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
   });
 
   t.end();
