@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Form, Link, redirect, useLoaderData } from "react-router";
 import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
@@ -63,6 +63,16 @@ export async function loader({ request }: Route.LoaderArgs) {
 export default function Dashboard() {
   const { docs, email } = useLoaderData<typeof loader>();
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
   const [renameModalDoc, setRenameModalDoc] = useState<typeof docs[0] | null>(null);
   const [deleteModalDoc, setDeleteModalDoc] = useState<typeof docs[0] | null>(null);
 
@@ -131,7 +141,7 @@ export default function Dashboard() {
                   <Link to={editHref} className="relative aspect-4/5 block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
                     {doc.html ? (
                       <iframe
-                        srcDoc={injectDefaultStyles(doc.html)}
+                        srcDoc={injectDefaultStyles(doc.html, isDark)}
                         sandbox="allow-scripts"
                         loading="lazy"
                         tabIndex={-1}

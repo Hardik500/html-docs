@@ -1,4 +1,5 @@
 import { useLoaderData, useNavigate, Link } from "react-router";
+import { useEffect, useRef, useState } from "react";
 import type { Route } from "./+types/d.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
@@ -78,6 +79,27 @@ export const meta: Route.MetaFunction = ({ data }: { data: LoaderData | undefine
 
 export default function ViewerPage() {
   const { doc, tabs, activeTab, canEdit } = useLoaderData<LoaderData>();
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+
+  // Re-sync whenever the theme changes (handles toggle while the iframe is live).
+  useEffect(() => {
+    iframeRef.current?.contentWindow?.postMessage({ type: "html-docs-theme", dark: isDark }, "*");
+  }, [isDark]);
+
+  function handleIframeLoad() {
+    iframeRef.current?.contentWindow?.postMessage({ type: "html-docs-theme", dark: isDark }, "*");
+  }
 
   return (
     <div className="flex flex-col h-screen bg-canvas text-ink">
@@ -113,11 +135,13 @@ export default function ViewerPage() {
       {/* Iframe */}
       <div className="flex-1 overflow-hidden bg-canvas">
         <iframe
+          ref={iframeRef}
           key={activeTab.slug}
           src={`/raw/${doc.id}/${activeTab.slug}`}
           sandbox="allow-scripts"
           className="w-full h-full border-0"
           title={activeTab.name}
+          onLoad={handleIframeLoad}
         />
       </div>
 

@@ -38,10 +38,29 @@ function injectCsp(html: string): string {
   return meta + "\n" + html;
 }
 
+function useIsDark() {
+  const [isDark, setIsDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains("dark"))
+    );
+    obs.observe(document.documentElement, { attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  return isDark;
+}
+
 export default function PreviewIframe({ html, title = "Preview", contentType = "html" }: PreviewIframeProps) {
+  const isDark = useIsDark();
+  const isDarkRef = useRef(isDark);
+  useEffect(() => { isDarkRef.current = isDark; }, [isDark]);
+
   const resolvedHtml = contentType === "markdown" ? markdownToHtml(html) : html;
   const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html: resolvedHtml, ready: true }]);
   const nextId = useRef(1);
+  const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());
 
   // When html changes, push a new background frame (ready=false).
   // The old frame(s) remain visible underneath until the new one fades in.
@@ -52,7 +71,18 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
     });
   }, [resolvedHtml]);
 
+  // When isDark changes, notify all live iframes via postMessage.
+  useEffect(() => {
+    iframeRefs.current.forEach((iframe) => {
+      iframe.contentWindow?.postMessage({ type: "html-docs-theme", dark: isDark }, "*");
+    });
+  }, [isDark]);
+
   const handleLoad = (id: number) => {
+    // Sync theme immediately after the iframe finishes loading.
+    iframeRefs.current.get(id)?.contentWindow?.postMessage(
+      { type: "html-docs-theme", dark: isDarkRef.current }, "*"
+    );
     // Double-rAF ensures the browser has painted the new frame before we
     // trigger the CSS fade-in. Without this, opacity transitions over an
     // unrendered surface still flash white.
@@ -75,11 +105,15 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   };
 
   return (
-    <div className="relative w-full h-full" style={{ backgroundColor: "#F9F9F7" }}>
+    <div className="relative w-full h-full bg-canvas">
       {frames.map((frame, i) => (
         <iframe
           key={frame.id}
-          srcDoc={injectDefaultStyles(injectCsp(frame.html))}
+          ref={(el) => {
+            if (el) iframeRefs.current.set(frame.id, el);
+            else iframeRefs.current.delete(frame.id);
+          }}
+          srcDoc={injectDefaultStyles(injectCsp(frame.html), isDark)}
           onLoad={() => handleLoad(frame.id)}
           sandbox="allow-scripts"
           title={title}
