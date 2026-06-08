@@ -5,9 +5,10 @@ interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   onBlur?: () => void;
+  language?: string;
 }
 
-export default function Editor({ value, onChange, onBlur }: EditorProps) {
+export default function Editor({ value, onChange, onBlur, language = "html" }: EditorProps) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -22,7 +23,7 @@ export default function Editor({ value, onChange, onBlur }: EditorProps) {
   return (
     <MonacoEditor
       height="100%"
-      language="html"
+      language={language}
       theme="vs-dark"
       value={value}
       options={{

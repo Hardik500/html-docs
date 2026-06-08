@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
+import { markdownToHtml } from "~/lib/markdown";
 
 interface PreviewIframeProps {
   html: string;
   title?: string;
+  contentType?: "html" | "markdown";
 }
 
 interface FrameState {
@@ -36,18 +38,19 @@ function injectCsp(html: string): string {
   return meta + "\n" + html;
 }
 
-export default function PreviewIframe({ html, title = "Preview" }: PreviewIframeProps) {
-  const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html, ready: true }]);
+export default function PreviewIframe({ html, title = "Preview", contentType = "html" }: PreviewIframeProps) {
+  const resolvedHtml = contentType === "markdown" ? markdownToHtml(html) : html;
+  const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html: resolvedHtml, ready: true }]);
   const nextId = useRef(1);
 
   // When html changes, push a new background frame (ready=false).
   // The old frame(s) remain visible underneath until the new one fades in.
   useEffect(() => {
     setFrames((prev) => {
-      if (prev[prev.length - 1].html === html) return prev;
-      return [...prev, { id: nextId.current++, html, ready: false }];
+      if (prev[prev.length - 1].html === resolvedHtml) return prev;
+      return [...prev, { id: nextId.current++, html: resolvedHtml, ready: false }];
     });
-  }, [html]);
+  }, [resolvedHtml]);
 
   const handleLoad = (id: number) => {
     // Double-rAF ensures the browser has painted the new frame before we

@@ -50,3 +50,33 @@ export function deriveTitle(html: string): string {
 
   return "";
 }
+
+/**
+ * Server-side markdown title extraction.
+ * Looks for a YAML frontmatter `title:` field first, then the first ATX heading (#).
+ */
+export function extractMarkdownTitle(markdown: string, fallback: string): string {
+  try {
+    // YAML frontmatter: --- title: Foo ---
+    const fm = /^---[\s\S]*?^title:\s*(.+?)[\s\S]*?^---/m.exec(markdown);
+    if (fm?.[1]) return fm[1].trim().slice(0, 200);
+
+    // First ATX heading
+    const h = /^#{1,6}\s+(.+)/m.exec(markdown);
+    if (h?.[1]) return h[1].replace(/\s*#+\s*$/, "").trim().slice(0, 200);
+
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Lightweight client-safe markdown title derivation (no external parser).
+ * Returns "" if nothing is found.
+ */
+export function deriveMarkdownTitle(markdown: string): string {
+  const h = /^#{1,6}\s+(.+)/m.exec(markdown);
+  if (h?.[1]) return h[1].replace(/\s*#+\s*$/, "").trim().slice(0, 200);
+  return "";
+}

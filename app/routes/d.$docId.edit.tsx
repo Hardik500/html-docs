@@ -7,7 +7,7 @@ import { createTimer } from "~/lib/perf.server";
 import { checkSaveRate } from "~/lib/ratelimit.server";
 import { newTabId, newEditToken } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
-import { extractTitle, deriveTitle } from "~/lib/titleExtract";
+import { extractTitle, deriveTitle, extractMarkdownTitle, deriveMarkdownTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 import { ThemeToggle } from "~/components/ThemeToggle";
 
@@ -34,7 +34,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1", [docId])
       .finally(() => t.mark("q_doc")),
     query<TabItem & { html: string }>(
-      "SELECT id, slug, name, position, html FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
+      "SELECT id, slug, name, position, html, content_type FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
       [docId]
     ).finally(() => t.mark("q_tabs")),
     getUserId(request).finally(() => t.mark("auth")),
@@ -55,16 +55,21 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const GENERIC = /^(untitled.*|tab \d+)$/i;
   let titleDerived = false;
 
+  const firstTab = tabsResult.rows[0];
   const docTitle = (() => {
     if (doc.title && !GENERIC.test(doc.title.trim())) return doc.title;
-    const derived = extractTitle(tabsResult.rows[0]?.html ?? "", "");
+    const derived = firstTab?.content_type === "markdown"
+      ? extractMarkdownTitle(firstTab.html, "")
+      : extractTitle(firstTab?.html ?? "", "");
     if (derived) { titleDerived = true; return derived; }
     return doc.title;
   })();
 
   const tabs = tabsResult.rows.map((tab) => {
     if (!GENERIC.test(tab.name.trim())) return tab;
-    const derived = extractTitle(tab.html, "");
+    const derived = tab.content_type === "markdown"
+      ? extractMarkdownTitle(tab.html, "")
+      : extractTitle(tab.html, "");
     if (derived) { titleDerived = true; return { ...tab, name: derived }; }
     return tab;
   });
@@ -110,7 +115,7 @@ export async function action({ params, request }: Route.ActionArgs) {
   const body = await request.json() as {
     intent: string;
     title?: string;
-    tabs?: Array<{ id?: string; slug?: string; name: string; position: number; html?: string; _delete?: boolean }>;
+    tabs?: Array<{ id?: string; slug?: string; name: string; position: number; html?: string; content_type?: string; _delete?: boolean }>;
   };
 
   if (body.intent === "save") {
@@ -134,25 +139,30 @@ export async function action({ params, request }: Route.ActionArgs) {
       }
       // Detect new tabs: no id, or a client-side "new:..." temp id
       const isNew = !tab.id || tab.id.startsWith("new:");
+      const contentType = tab.content_type === "markdown" ? "markdown" : "html";
       if (isNew) {
         const tabId = newTabId();
         const name = (tab.name || "New Tab").slice(0, 200);
-        const html = tab.html || "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>";
+        const html = tab.html || (contentType === "markdown"
+          ? `# ${name}\n\n`
+          : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
         const existingSlugSet = new Set([...slugMap.values()]);
         const slug = dedupeSlug(slugify(name), existingSlugSet);
         slugMap.set(tabId, slug);
         await query(
-          "INSERT INTO tabs (id, doc_id, slug, name, position, html) VALUES ($1,$2,$3,$4,$5,$6)",
-          [tabId, docId, slug, name, tab.position, html]
+          "INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+          [tabId, docId, slug, name, tab.position, html, contentType]
         );
         if (tab.id) createdTabs.push({ tempId: tab.id, id: tabId, slug });
       } else {
         const html = tab.html ?? "";
         if (new TextEncoder().encode(html).length > MAX_HTML_BYTES) continue;
-        const name = (tab.name || extractTitle(html, "Tab")).slice(0, 200);
+        const name = (tab.name || (contentType === "markdown"
+          ? extractMarkdownTitle(html, "Tab")
+          : extractTitle(html, "Tab"))).slice(0, 200);
         await query(
-          "UPDATE tabs SET name=$1, position=$2, html=$3, updated_at=now(), version=version+1 WHERE id=$4 AND doc_id=$5",
-          [name, tab.position, html, tab.id, docId]
+          "UPDATE tabs SET name=$1, position=$2, html=$3, content_type=$4, updated_at=now(), version=version+1 WHERE id=$5 AND doc_id=$6",
+          [name, tab.position, html, contentType, tab.id, docId]
         );
       }
     }
@@ -339,7 +349,8 @@ export default function EditPage() {
     if (currentTab && currentTab.html === html) return;
 
     markDirty();
-    const newDerived = deriveTitle(html);
+    const isMarkdown = currentTab?.content_type === "markdown";
+    const newDerived = isMarkdown ? deriveMarkdownTitle(html) : deriveTitle(html);
 
     // Compute auto-name decision outside any state-setter callback (StrictMode
     // double-invokes setter callbacks, which would corrupt ref mutations).
@@ -374,7 +385,7 @@ export default function EditPage() {
     if (tab) { setActiveTabId(id); setPreviewHtml(tab.html); }
   }
 
-  function handleAddTab() {
+  function handleAddTab(type: "html" | "markdown" = "html") {
     if (tabs.length >= MAX_TABS) return;
     const position = tabs.length;
     const name = `Tab ${position + 1}`;
@@ -382,10 +393,12 @@ export default function EditPage() {
     // Use a temp id with "new:" prefix
     const tempId = `new:${Date.now()}`;
     const slug = dedupeSlug(slugify(name), new Set(tabs.map((t) => t.slug)));
-    const html = `<!DOCTYPE html>\n<html>\n<head><title>${name}</title></head>\n<body>\n</body>\n</html>`;
-    // Register new tab for auto-naming (name matches the generic title in the HTML).
+    const html = type === "markdown"
+      ? `# ${name}\n\n`
+      : `<!DOCTYPE html>\n<html>\n<head><title>${name}</title></head>\n<body>\n</body>\n</html>`;
+    // Register new tab for auto-naming (name matches the generic title in the HTML/MD).
     tabAutoNamesRef.current.set(tempId, name);
-    setTabs((prev) => [...prev, { id: tempId, slug, name, position, html }]);
+    setTabs((prev) => [...prev, { id: tempId, slug, name, position, html, content_type: type }]);
     setActiveTabId(tempId);
     setPreviewHtml(html);
   }
@@ -393,8 +406,16 @@ export default function EditPage() {
   function handleReorder(reordered: TabItem[]) {
     markDirty();
     setTabs((prev) =>
-      reordered.map((r) => ({ ...r, html: prev.find((t) => t.id === r.id)?.html ?? "" }))
+      reordered.map((r) => {
+        const existing = prev.find((t) => t.id === r.id);
+        return { ...r, html: existing?.html ?? "", content_type: existing?.content_type ?? "html" };
+      })
     );
+  }
+
+  function handleTypeChange(id: string, type: "html" | "markdown") {
+    markDirty();
+    setTabs((prev) => prev.map((t) => t.id === id ? { ...t, content_type: type } : t));
   }
 
   function handleRename(id: string, name: string) {
@@ -421,7 +442,7 @@ export default function EditPage() {
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
   }
 
-  function handleDropFiles(files: Array<{ name: string; html: string }>) {
+  function handleDropFiles(files: Array<{ name: string; html: string; content_type: "html" | "markdown" }>) {
     const GENERIC = /^(untitled.*|tab \d+|new tab)$/i;
 
     // If we only have 1 tab and it matches a generic/placeholder name, replace it entirely
@@ -440,7 +461,7 @@ export default function EditPage() {
       const tempId = `new:${Date.now()}-${index}`;
       const name = file.name.slice(0, 200);
       tabAutoNamesRef.current.set(tempId, "\0");
-      return { id: tempId, slug, name, position, html: file.html };
+      return { id: tempId, slug, name, position, html: file.html, content_type: file.content_type };
     });
 
     // If we only have one generic tab, mark it for deletion and replace with new ones
@@ -469,7 +490,10 @@ export default function EditPage() {
 
     // Auto-derive doc title from first dropped file if doc title is still generic
     if (GENERIC.test(docTitle.trim()) && newTabs.length > 0) {
-      const derived = extractTitle(newTabs[0].html, "");
+      const first = newTabs[0];
+      const derived = first.content_type === "markdown"
+        ? extractMarkdownTitle(first.html, "")
+        : extractTitle(first.html, "");
       if (derived) {
         setDocTitle(derived);
         docTitleLockedRef.current = false;
@@ -570,11 +594,25 @@ export default function EditPage() {
         {/* Monaco editor */}
         {(layout === "split" || layout === "code") && (
           <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
+            {/* Type toggle */}
+            <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-[#333]">
+              <div className="flex rounded border border-[#555] overflow-hidden text-[10px] font-bold uppercase tracking-wider">
+                <button
+                  onClick={() => activeTabId && handleTypeChange(activeTabId, "html")}
+                  className={`px-2.5 py-1 transition-colors ${activeTab?.content_type !== "markdown" ? "bg-[#444] text-white" : "text-[#888] hover:text-white"}`}
+                >HTML</button>
+                <button
+                  onClick={() => activeTabId && handleTypeChange(activeTabId, "markdown")}
+                  className={`px-2.5 py-1 transition-colors ${activeTab?.content_type === "markdown" ? "bg-[#444] text-white" : "text-[#888] hover:text-white"}`}
+                >MD</button>
+              </div>
+            </div>
             <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading editor…</div>}>
               <Editor
                 value={activeTab?.html ?? ""}
                 onChange={handleHtmlChange}
                 onBlur={save}
+                language={activeTab?.content_type === "markdown" ? "markdown" : "html"}
               />
             </Suspense>
           </div>
@@ -584,7 +622,7 @@ export default function EditPage() {
         {(layout === "split" || layout === "preview") && (
           <div className={`flex-1 overflow-hidden flex flex-col bg-canvas ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
             <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading…</div>}>
-              <PreviewIframe html={previewHtml} />
+              <PreviewIframe html={previewHtml} contentType={activeTab?.content_type ?? "html"} />
             </Suspense>
           </div>
         )}

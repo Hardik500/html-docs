@@ -22,6 +22,7 @@ export interface TabItem {
   slug: string;
   name: string;
   position: number;
+  content_type: "html" | "markdown";
 }
 
 interface SortableTabProps {
@@ -89,6 +90,9 @@ function SortableTab({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
         </span>
       )}
+      {tab.content_type === "markdown" && !editing && (
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 rounded text-primary bg-primary/10">MD</span>
+      )}
 
       {editing ? (
         <input
@@ -140,10 +144,10 @@ interface TabSidebarProps {
   activeTabId: string;
   onSelect: (id: string) => void;
   onReorder: (tabs: TabItem[]) => void;
-  onAdd: () => void;
+  onAdd: (type: "html" | "markdown") => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-  onDropFiles?: (files: Array<{ name: string; html: string }>) => void;
+  onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" }>) => void;
 }
 
 export default function TabSidebar({
@@ -197,22 +201,23 @@ export default function TabSidebar({
     setDragOver(false);
 
     const files = Array.from(e.dataTransfer.files || []);
-    const htmlFiles: Array<{ name: string; html: string }> = [];
+    const droppedFiles: Array<{ name: string; html: string; content_type: "html" | "markdown" }> = [];
 
     for (const file of files) {
-      if (file.type === "text/html" || file.name.endsWith(".html")) {
-        try {
-          const html = await file.text();
-          const name = file.name.replace(/\.html$/i, "");
-          htmlFiles.push({ name, html });
-        } catch {
-          // Silently skip files that can't be read
-        }
+      const isHtml = file.type === "text/html" || file.name.endsWith(".html");
+      const isMd = file.name.endsWith(".md") || file.name.endsWith(".markdown");
+      if (!isHtml && !isMd) continue;
+      try {
+        const content = await file.text();
+        const name = file.name.replace(/\.(html|md|markdown)$/i, "");
+        droppedFiles.push({ name, html: content, content_type: isHtml ? "html" : "markdown" });
+      } catch {
+        // Silently skip files that can't be read
       }
     }
 
-    if (htmlFiles.length > 0 && onDropFiles) {
-      onDropFiles(htmlFiles);
+    if (droppedFiles.length > 0 && onDropFiles) {
+      onDropFiles(droppedFiles);
     }
   }
 
@@ -229,14 +234,24 @@ export default function TabSidebar({
         <span className="text-[11px] font-bold uppercase tracking-widest text-subtle">
           Files
         </span>
-        <button
-          onClick={onAdd}
-          disabled={tabs.length >= 20}
-          className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
-          title="Add tab"
-        >
-          <span>+</span> Add
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => onAdd("html")}
+            disabled={tabs.length >= 20}
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            title="Add HTML tab"
+          >
+            <span>+</span> HTML
+          </button>
+          <button
+            onClick={() => onAdd("markdown")}
+            disabled={tabs.length >= 20}
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            title="Add Markdown tab"
+          >
+            <span>+</span> MD
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-0.5 flex flex-col">
@@ -275,7 +290,7 @@ export default function TabSidebar({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 16v-4m0 0V8m0 4H8m0 0h4m4 0h-4" />
               </svg>
               <p className="text-xs font-medium mb-0.5">
-                {dragOver ? "Drop HTML files here" : "Drag HTML files here"}
+                {dragOver ? "Drop files here" : "Drag HTML or MD files"}
               </p>
               <p className="text-[10px] opacity-70">
                 {tabs.length === 0 ? "or click + Add to create one" : `${20 - tabs.length} slot${20 - tabs.length === 1 ? "" : "s"} available`}
