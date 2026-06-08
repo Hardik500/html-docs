@@ -22,7 +22,7 @@ export interface TabItem {
   slug: string;
   name: string;
   position: number;
-  content_type: "html" | "markdown";
+  content_type: "html" | "markdown" | "pdf";
 }
 
 interface SortableTabProps {
@@ -93,6 +93,9 @@ function SortableTab({
       {tab.content_type === "markdown" && !editing && (
         <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 rounded text-primary bg-primary/10">MD</span>
       )}
+      {tab.content_type === "pdf" && !editing && (
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 rounded text-red-500 bg-red-500/10">PDF</span>
+      )}
 
       {editing ? (
         <input
@@ -147,7 +150,7 @@ interface TabSidebarProps {
   onAdd: (type: "html" | "markdown") => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-  onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" }>) => void;
+  onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }>) => void;
 }
 
 export default function TabSidebar({
@@ -233,16 +236,32 @@ export default function TabSidebar({
     setDragOver(false);
 
     const files = Array.from(e.dataTransfer.files || []);
-    const droppedFiles: Array<{ name: string; html: string; content_type: "html" | "markdown" }> = [];
+    const droppedFiles: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }> = [];
 
     for (const file of files) {
       const isHtml = file.type === "text/html" || file.name.endsWith(".html");
       const isMd = file.name.endsWith(".md") || file.name.endsWith(".markdown");
-      if (!isHtml && !isMd) continue;
+      const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+      if (!isHtml && !isMd && !isPdf) continue;
+
       try {
-        const content = await file.text();
-        const name = file.name.replace(/\.(html|md|markdown)$/i, "");
-        droppedFiles.push({ name, html: content, content_type: isHtml ? "html" : "markdown" });
+        if (isPdf) {
+          // Cap at 4 MB before base64 inflation (~5.3 MB encoded)
+          if (file.size > 4 * 1024 * 1024) continue;
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve((reader.result as string).split(",")[1]);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          const name = file.name.replace(/\.pdf$/i, "");
+          droppedFiles.push({ name, html: base64, content_type: "pdf" });
+        } else {
+          const content = await file.text();
+          const name = file.name.replace(/\.(html|md|markdown)$/i, "");
+          droppedFiles.push({ name, html: content, content_type: isHtml ? "html" : "markdown" });
+        }
       } catch {
         // Silently skip files that can't be read
       }
@@ -325,7 +344,7 @@ export default function TabSidebar({
               : "border-hairline bg-surface text-muted hover:border-primary/50 hover:text-body-strong"
           }`}>
             <p className="text-[10px] text-center font-medium">
-              {dragOver ? "Drop files here" : "Drag HTML or MD files"}
+              {dragOver ? "Drop files here" : "Drag HTML, MD or PDF files"}
             </p>
           </div>
         )}
