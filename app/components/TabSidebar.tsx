@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import {
   DndContext,
   closestCenter,
@@ -161,6 +161,38 @@ export default function TabSidebar({
   onDropFiles,
 }: TabSidebarProps) {
   const [dragOver, setDragOver] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(256); // default slightly wider than w-56
+  const isResizing = useRef(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(0);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isResizing.current) return;
+      const delta = e.clientX - resizeStartX.current;
+      setSidebarWidth(Math.max(180, Math.min(480, resizeStartWidth.current + delta)));
+    }
+    function onMouseUp() {
+      isResizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, []);
+
+  function handleResizeStart(e: React.MouseEvent) {
+    isResizing.current = true;
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = sidebarWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    e.preventDefault();
+  }
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -223,13 +255,20 @@ export default function TabSidebar({
 
   return (
     <div
-      className={`flex flex-col h-full w-56 shrink-0 z-10 border-r bg-surface border-hairline transition-colors ${
+      className={`relative flex flex-col h-full shrink-0 z-10 border-r bg-surface border-hairline transition-colors ${
         dragOver ? "bg-primary/5 border-primary" : ""
       }`}
+      style={{ width: sidebarWidth }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {/* Resize handle */}
+      <div
+        onMouseDown={handleResizeStart}
+        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-20 hover:bg-primary/40 transition-colors"
+        title="Drag to resize"
+      />
       <div className="px-4 py-3 flex items-center justify-between border-b border-hairline">
         <span className="text-[11px] font-bold uppercase tracking-widest text-subtle">
           Files
