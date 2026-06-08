@@ -93,7 +93,7 @@ const DEFAULT_STYLE = `<style>
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
   }
-  body { font-family: inherit; background-color: #F9F9F7; padding: 8px 16px; }
+  body { font-family: inherit; background-color: var(--color-background-primary); padding: 8px 16px; }
 
   /* Layout helpers */
   .g2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.25rem; }
@@ -138,11 +138,22 @@ const DEFAULT_STYLE = `<style>
   .tax-row span:last-child { font-weight: 500; color: var(--color-text-primary); }
 </style>`;
 
-const INJECTION = `${INTER_FONTS}\n  ${DEFAULT_STYLE}`;
+/**
+ * Tiny script injected into every iframe document.
+ * 1. Immediately sets color-scheme from the system media query so light-dark()
+ *    picks the right values before any paint (fallback for direct /raw/ URLs).
+ * 2. Listens for { type: 'html-docs-theme', dark: boolean } postMessage from
+ *    the parent app so the iframe stays in sync when the user toggles the theme.
+ */
+const THEME_SCRIPT = `<script>(function(){var r=document.documentElement;if(!r.style.colorScheme)r.style.colorScheme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';window.addEventListener('message',function(e){if(e.data&&e.data.type==='html-docs-theme')r.style.colorScheme=e.data.dark?'dark':'light';});})();</script>`;
 
-export function injectDefaultStyles(html: string): string {
+export function injectDefaultStyles(html: string, isDark?: boolean): string {
+  const colorSchemeStyle = isDark !== undefined
+    ? `<style>:root{color-scheme:${isDark ? "dark" : "light"}}</style>\n  `
+    : "";
+  const injection = `${INTER_FONTS}\n  ${DEFAULT_STYLE}\n  ${colorSchemeStyle}${THEME_SCRIPT}`;
   if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/(<head[^>]*>)/i, `$1\n  ${INJECTION}`);
+    return html.replace(/(<head[^>]*>)/i, `$1\n  ${injection}`);
   }
-  return INJECTION + "\n" + html;
+  return injection + "\n" + html;
 }
