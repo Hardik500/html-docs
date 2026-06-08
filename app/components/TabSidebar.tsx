@@ -76,7 +76,7 @@ function SortableTab({
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 px-3 py-1 rounded-md cursor-pointer text-sm font-medium transition-colors ${
+      className={`group relative flex items-center gap-2 px-3 py-1 rounded-md cursor-pointer text-sm font-medium transition-colors ${
         isActive ? "bg-card text-ink shadow-sm" : "text-muted hover:bg-card hover:text-body-strong"
       }`}
     >
@@ -84,7 +84,7 @@ function SortableTab({
         <span
           {...attributes}
           {...listeners}
-          className="cursor-grab active:cursor-grabbing px-1 opacity-0 group-hover:opacity-100 transition-opacity text-subtle"
+          className="absolute left-0 inset-y-0 flex items-center px-1 cursor-grab active:cursor-grabbing text-subtle opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-150 pointer-events-none group-hover:pointer-events-auto"
           aria-label="Drag to reorder"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
@@ -107,7 +107,7 @@ function SortableTab({
         />
       ) : (
         <button
-          className="flex-1 text-left truncate -ml-1 focus:outline-none"
+          className="flex-1 text-left truncate focus:outline-none"
           onClick={() => onSelect(tab.id)}
           onDoubleClick={startEditing}
         >
