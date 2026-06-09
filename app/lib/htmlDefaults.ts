@@ -147,11 +147,20 @@ const DEFAULT_STYLE = `<style>
  */
 const THEME_SCRIPT = `<script>(function(){var r=document.documentElement;if(!r.style.colorScheme)r.style.colorScheme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';window.addEventListener('message',function(e){if(e.data&&e.data.type==='html-docs-theme')r.style.colorScheme=e.data.dark?'dark':'light';});})();</script>`;
 
+/**
+ * Intercepts all <a> clicks inside the sandboxed iframe.
+ * - Pure in-page anchors (#id) → scrollIntoView within the frame.
+ * - Everything else → postMessage to parent so it can open the URL in a new
+ *   tab. This prevents the sandboxed iframe from navigating (which would
+ *   trigger SecurityErrors and 403s on auth-protected pages).
+ */
+const LINK_SCRIPT = `<script>(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');if(!a)return;var raw=a.getAttribute('href')||'';if(!raw||raw.startsWith('javascript:'))return;e.preventDefault();if(raw.startsWith('#')){var id=raw.slice(1);var t=document.getElementById(id)||document.querySelector('[name="'+id+'"]');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});}else{window.parent.postMessage({type:'html-docs-open-link',url:a.href},'*');}});})();</script>`;
+
 export function injectDefaultStyles(html: string, isDark?: boolean): string {
   const colorSchemeStyle = isDark !== undefined
     ? `<style>:root{color-scheme:${isDark ? "dark" : "light"}}</style>\n  `
     : "";
-  const injection = `${INTER_FONTS}\n  ${DEFAULT_STYLE}\n  ${colorSchemeStyle}${THEME_SCRIPT}`;
+  const injection = `${INTER_FONTS}\n  ${DEFAULT_STYLE}\n  ${colorSchemeStyle}${THEME_SCRIPT}\n  ${LINK_SCRIPT}`;
   if (/<head[^>]*>/i.test(html)) {
     return html.replace(/(<head[^>]*>)/i, `$1\n  ${injection}`);
   }

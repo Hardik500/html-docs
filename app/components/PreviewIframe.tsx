@@ -93,6 +93,22 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
     });
   }, [isDark]);
 
+  // Open links forwarded from the sandboxed iframe in a new tab.
+  // The injected LINK_SCRIPT posts { type: 'html-docs-open-link', url } for
+  // any non-anchor link so the iframe never navigates (which would 403/crash).
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type !== "html-docs-open-link") return;
+      const url = e.data.url;
+      // Only open http(s) URLs — guard against javascript: injection.
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   const handleLoad = (id: number) => {
     // Sync theme immediately after the iframe finishes loading.
     iframeRefs.current.get(id)?.contentWindow?.postMessage(

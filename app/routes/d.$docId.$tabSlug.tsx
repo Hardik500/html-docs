@@ -98,6 +98,19 @@ export default function ViewerPage() {
     iframeRef.current?.contentWindow?.postMessage({ type: "html-docs-theme", dark: isDark }, "*");
   }, [isDark]);
 
+  // Open links forwarded from the sandboxed iframe in a new tab.
+  useEffect(() => {
+    function handleMessage(e: MessageEvent) {
+      if (e.data?.type !== "html-docs-open-link") return;
+      const url = e.data.url;
+      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   function handleIframeLoad() {
     iframeRef.current?.contentWindow?.postMessage({ type: "html-docs-theme", dark: isDark }, "*");
   }
