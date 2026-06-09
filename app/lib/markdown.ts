@@ -1,5 +1,33 @@
 import { marked } from "marked";
 
+/**
+ * GitHub-compatible heading slug:
+ *   lowercase → strip inline HTML → drop non-alphanumeric/space/hyphen → spaces→hyphens
+ *
+ * Examples
+ *   "MCP Phase 1 – Auth Service"  →  "mcp-phase-1--auth-service"
+ *   "1. Getting Started"          →  "1-getting-started"
+ */
+function headingSlug(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/<[^>]+>/g, "")       // strip any inline HTML (<code> etc.)
+    .replace(/[^a-z0-9\s-]/g, "")  // drop punctuation (keeps spaces & hyphens)
+    .trim()
+    .replace(/\s+/g, "-");         // whitespace → hyphens (intentionally no collapse)
+}
+
+// Configure marked once at module load so heading IDs are always present.
+// This makes anchor links like [text](#section) scroll correctly in the iframe.
+marked.use({
+  renderer: {
+    heading({ text, depth, raw }: { text: string; depth: number; raw: string }) {
+      const id = headingSlug(raw);
+      return `<h${depth} id="${id}">${text}</h${depth}>\n`;
+    },
+  },
+});
+
 const PROSE_STYLE = `<style>
   body { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
   h1,h2,h3,h4,h5,h6 { font-weight: 600; line-height: 1.25; margin: 1.5em 0 0.5em; color: var(--color-text-primary); }
