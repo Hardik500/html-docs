@@ -145,7 +145,12 @@ const DEFAULT_STYLE = `<style>
  * 2. Listens for { type: 'html-docs-theme', dark: boolean } postMessage from
  *    the parent app so the iframe stays in sync when the user toggles the theme.
  */
-const THEME_SCRIPT = `<script>(function(){var r=document.documentElement;if(!r.style.colorScheme)r.style.colorScheme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';window.addEventListener('message',function(e){if(e.data&&e.data.type==='html-docs-theme')r.style.colorScheme=e.data.dark?'dark':'light';});})();</script>`;
+// Injected into every iframe document:
+// 1. Color-scheme init (light-dark() picks correct values before first paint)
+// 2. Listens for theme + scroll-restore postMessages from the parent
+// 3. Reports scroll Y to the parent on every scroll so the parent can
+//    restore the position when the iframe content is refreshed.
+const THEME_SCRIPT = `<script>(function(){var r=document.documentElement;if(!r.style.colorScheme)r.style.colorScheme=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';window.addEventListener('message',function(e){if(!e.data)return;if(e.data.type==='html-docs-theme')r.style.colorScheme=e.data.dark?'dark':'light';if(e.data.type==='html-docs-restore-scroll')window.scrollTo(0,e.data.y||0);});window.addEventListener('scroll',function(){window.parent.postMessage({type:'html-docs-scroll',y:window.scrollY},'*');},{passive:true});})();</script>`;
 
 /**
  * Intercepts all <a> clicks inside the sandboxed iframe.
