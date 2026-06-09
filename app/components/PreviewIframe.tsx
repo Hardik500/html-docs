@@ -62,6 +62,8 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html: resolvedHtml, ready: true }]);
   const nextId = useRef(1);
   const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());
+  // Tracks the last scroll Y reported by whichever iframe is active.
+  const lastScrollY = useRef(0);
 
   // PDF: bypass the iframe crossfade stack entirely — embed renders natively in the browser.
   if (contentType === "pdf") {
@@ -93,16 +95,19 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
     });
   }, [isDark]);
 
-  // Open links forwarded from the sandboxed iframe in a new tab.
-  // The injected LINK_SCRIPT posts { type: 'html-docs-open-link', url } for
-  // any non-anchor link so the iframe never navigates (which would 403/crash).
+  // Handle postMessages from sandboxed iframes:
+  //   html-docs-open-link  → open external URLs in a new tab
+  //   html-docs-scroll     → record the current scroll Y so new frames can restore it
   useEffect(() => {
     function handleMessage(e: MessageEvent) {
-      if (e.data?.type !== "html-docs-open-link") return;
-      const url = e.data.url;
-      // Only open http(s) URLs — guard against javascript: injection.
-      if (typeof url === "string" && /^https?:\/\//i.test(url)) {
-        window.open(url, "_blank", "noopener,noreferrer");
+      if (!e.data) return;
+      if (e.data.type === "html-docs-open-link") {
+        const url = e.data.url;
+        if (typeof url === "string" && /^https?:\/\//i.test(url)) {
+          window.open(url, "_blank", "noopener,noreferrer");
+        }
+      } else if (e.data.type === "html-docs-scroll") {
+        lastScrollY.current = e.data.y ?? 0;
       }
     }
     window.addEventListener("message", handleMessage);
@@ -110,10 +115,14 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   }, []);
 
   const handleLoad = (id: number) => {
+    const win = iframeRefs.current.get(id)?.contentWindow;
     // Sync theme immediately after the iframe finishes loading.
-    iframeRefs.current.get(id)?.contentWindow?.postMessage(
-      { type: "html-docs-theme", dark: isDarkRef.current }, "*"
-    );
+    win?.postMessage({ type: "html-docs-theme", dark: isDarkRef.current }, "*");
+    // Restore scroll before the frame fades in so the user never sees the jump.
+    // Only restore for frames that aren't the initial load (id > 0).
+    if (id > 0 && lastScrollY.current > 0) {
+      win?.postMessage({ type: "html-docs-restore-scroll", y: lastScrollY.current }, "*");
+    }
     // Double-rAF ensures the browser has painted the new frame before we
     // trigger the CSS fade-in. Without this, opacity transitions over an
     // unrendered surface still flash white.
