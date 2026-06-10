@@ -28,7 +28,7 @@ marked.use({
   },
 });
 
-const PROSE_STYLE = `<style>
+export const PROSE_STYLE = `<style>
   body { max-width: 800px; margin: 0 auto; padding: 2rem 1rem; }
   h1,h2,h3,h4,h5,h6 { font-weight: 600; line-height: 1.25; margin: 1.5em 0 0.5em; color: var(--color-text-primary); }
   h1 { font-size: 2em; border-bottom: 1px solid var(--color-border-tertiary); padding-bottom: 0.3em; }
