@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useLoaderData, useFetcher, redirect, Link } from "react-router";
 import type { Route } from "./+types/d.$docId.edit";
 import { query } from "~/lib/db.server";
@@ -194,6 +194,12 @@ export default function EditPage() {
 
   const [docTitle, setDocTitle] = useState(doc.title);
   const [tabs, setTabs] = useState<(TabItem & { html: string })[]>(initialTabs);
+  // Stable reference — only changes when tab content actually changes.
+  // Passed to TabSidebar so its internal useMemos don't thrash on every editor keystroke.
+  const tabContents = useMemo(
+    () => Object.fromEntries(tabs.map((t) => [t.id, t.html])),
+    [tabs]
+  );
   const [activeTabId, setActiveTabId] = useState(initialTabs[0]?.id ?? "");
   const [previewHtml, setPreviewHtml] = useState(initialTabs[0]?.html ?? "");
   // If the loader derived a better title server-side, it hasn't been persisted yet.
@@ -592,6 +598,7 @@ export default function EditPage() {
           <TabSidebar
             tabs={tabs}
             activeTabId={activeTabId}
+            tabContents={tabContents}
             onSelect={handleTabSelect}
             onReorder={handleReorder}
             onAdd={handleAddTab}

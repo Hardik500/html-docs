@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -145,6 +145,8 @@ function SortableTab({
 interface TabSidebarProps {
   tabs: TabItem[];
   activeTabId: string;
+  /** Map from tab id → raw html/markdown content used for full-text search. */
+  tabContents?: Record<string, string>;
   onSelect: (id: string) => void;
   onReorder: (tabs: TabItem[]) => void;
   onAdd: (type: "html" | "markdown") => void;
@@ -153,9 +155,35 @@ interface TabSidebarProps {
   onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }>) => void;
 }
 
+/** Strip HTML tags so we search visible text, not markup. */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Find the first occurrence of `needle` in `haystack` and return a short
+ * surrounding snippet with the match position for highlighting.
+ */
+function findSnippet(
+  haystack: string,
+  needle: string
+): { before: string; match: string; after: string } | null {
+  const idx = haystack.toLowerCase().indexOf(needle.toLowerCase());
+  if (idx === -1) return null;
+  const RADIUS = 40;
+  const start = Math.max(0, idx - RADIUS);
+  const end = Math.min(haystack.length, idx + needle.length + RADIUS);
+  return {
+    before: (start > 0 ? "…" : "") + haystack.slice(start, idx),
+    match: haystack.slice(idx, idx + needle.length),
+    after: haystack.slice(idx + needle.length, end) + (end < haystack.length ? "…" : ""),
+  };
+}
+
 export default function TabSidebar({
   tabs,
   activeTabId,
+  tabContents = {},
   onSelect,
   onReorder,
   onAdd,
@@ -165,7 +193,31 @@ export default function TabSidebar({
 }: TabSidebarProps) {
   const [dragOver, setDragOver] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
-  const [sidebarWidth, setSidebarWidth] = useState(256); // default slightly wider than w-56
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarWidth, setSidebarWidth] = useState(256);
+
+  // Strip HTML once per content change — not on every keypress.
+  const strippedContents = useMemo(
+    () => Object.fromEntries(
+      Object.entries(tabContents).map(([id, html]) => [id, stripHtml(html)])
+    ),
+    [tabContents]
+  );
+
+  // Recompute search results only when query or stripped content changes.
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    return tabs.flatMap((tab) => {
+      const nameMatch = tab.name.toLowerCase().includes(q.toLowerCase());
+      if (tab.content_type === "pdf") {
+        return nameMatch ? [{ tab, snippet: null as ReturnType<typeof findSnippet> }] : [];
+      }
+      const plain = strippedContents[tab.id] ?? "";
+      const snippet = findSnippet(plain, q);
+      return nameMatch || snippet ? [{ tab, snippet }] : [];
+    });
+  }, [tabs, strippedContents, searchQuery]); // default slightly wider than w-56
   const isResizing = useRef(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
@@ -318,29 +370,87 @@ export default function TabSidebar({
         </div>
       </div>
 
+      {/* Search input */}
+      <div className="px-2 pt-2 pb-1">
+        <div className="relative">
+          <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-subtle pointer-events-none" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search tabs…"
+            className="w-full pl-6 pr-6 py-1 text-xs rounded-md border bg-paper text-ink border-hairline placeholder:text-subtle focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-subtle hover:text-ink"
+              aria-label="Clear search"
+            >
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
       <div className="flex-1 overflow-y-auto px-2 py-1 space-y-0.5 flex flex-col">
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext
-            items={tabs.map((t) => t.id)}
-            strategy={verticalListSortingStrategy}
-          >
-            {tabs.map((tab) => (
-              <SortableTab
+        {searchResults !== null ? (
+          // ── Search results mode ──────────────────────────────────────────
+          searchResults.length === 0 ? (
+            <p className="px-3 py-4 text-[11px] text-subtle text-center">
+              No results for "{searchQuery.trim()}"
+            </p>
+          ) : (
+            searchResults.map(({ tab, snippet }) => (
+              <button
                 key={tab.id}
-                tab={tab}
-                isActive={tab.id === activeTabId}
-                onSelect={onSelect}
-                onRename={onRename}
-                onDelete={onDelete}
-                canDelete={tabs.length > 1}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
+                onClick={() => { onSelect(tab.id); setSearchQuery(""); }}
+                className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
+                  tab.id === activeTabId
+                    ? "bg-card text-ink shadow-sm"
+                    : "text-muted hover:bg-card hover:text-body-strong"
+                }`}
+              >
+                <div className="font-medium truncate text-[12px]">{tab.name}</div>
+                {snippet && (
+                  <div className="text-[10px] text-subtle mt-0.5 leading-snug line-clamp-2">
+                    {snippet.before}
+                    <mark className="bg-primary/20 text-primary rounded-sm px-px">{snippet.match}</mark>
+                    {snippet.after}
+                  </div>
+                )}
+              </button>
+            ))
+          )
+        ) : (
+          // ── Normal drag-to-reorder mode ──────────────────────────────────
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={tabs.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {tabs.map((tab) => (
+                <SortableTab
+                  key={tab.id}
+                  tab={tab}
+                  isActive={tab.id === activeTabId}
+                  onSelect={onSelect}
+                  onRename={onRename}
+                  onDelete={onDelete}
+                  canDelete={tabs.length > 1}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
+        )}
 
         {/* Drop error */}
         {dropError && (
@@ -349,8 +459,8 @@ export default function TabSidebar({
           </div>
         )}
 
-        {/* Drag & Drop Instructions */}
-        {tabs.length < 20 && (
+        {/* Drag & Drop Instructions — hidden during search */}
+        {!searchQuery && tabs.length < 20 && (
           <div className={`mt-auto px-3 py-2 rounded-lg border border-dashed transition-all ${
             dragOver
               ? "border-primary bg-primary/8 text-primary"
