@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useMemo } from "react";
+import { MAX_DOC_BYTES } from "~/lib/limits";
 import {
   DndContext,
   closestCenter,
@@ -22,7 +23,7 @@ export interface TabItem {
   slug: string;
   name: string;
   position: number;
-  content_type: "html" | "markdown" | "pdf";
+  content_type: "html" | "markdown" | "pdf" | "doc";
 }
 
 interface SortableTabProps {
@@ -96,6 +97,9 @@ function SortableTab({
       {tab.content_type === "pdf" && !editing && (
         <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 rounded text-red-500 bg-red-500/10">PDF</span>
       )}
+      {tab.content_type === "doc" && !editing && (
+        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1 rounded text-blue-500 bg-blue-500/10">DOC</span>
+      )}
 
       {editing ? (
         <input
@@ -149,10 +153,10 @@ interface TabSidebarProps {
   tabContents?: Record<string, string>;
   onSelect: (id: string) => void;
   onReorder: (tabs: TabItem[]) => void;
-  onAdd: (type: "html" | "markdown") => void;
+  onAdd: (type: "html" | "markdown" | "doc") => void;
   onRename: (id: string, name: string) => void;
   onDelete: (id: string) => void;
-  onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }>) => void;
+  onDropFiles?: (files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" | "doc" }>) => void;
 }
 
 /** Strip HTML tags so we search visible text, not markup. */
@@ -289,14 +293,17 @@ export default function TabSidebar({
     setDragOver(false);
 
     const files = Array.from(e.dataTransfer.files || []);
-    const droppedFiles: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }> = [];
+    const droppedFiles: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" | "doc" }> = [];
 
     for (const file of files) {
       const isHtml = file.type === "text/html" || file.name.endsWith(".html");
       const isMd = file.name.endsWith(".md") || file.name.endsWith(".markdown");
       const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+      const isDocx =
+        file.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+        file.name.toLowerCase().endsWith(".docx");
 
-      if (!isHtml && !isMd && !isPdf) continue;
+      if (!isHtml && !isMd && !isPdf && !isDocx) continue;
 
       try {
         if (isPdf) {
@@ -315,13 +322,25 @@ export default function TabSidebar({
           });
           const name = file.name.replace(/\.pdf$/i, "");
           droppedFiles.push({ name, html: base64, content_type: "pdf" });
+        } else if (isDocx) {
+          const { default: mammoth } = await import("mammoth/mammoth.browser");
+          const arrayBuffer = await file.arrayBuffer();
+          const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+          if (new TextEncoder().encode(html).length > MAX_DOC_BYTES) {
+            setDropError(`"${file.name}" is too large after conversion — must be under 2.8 MB`);
+            setTimeout(() => setDropError(null), 5000);
+            continue;
+          }
+          const name = file.name.replace(/\.docx$/i, "");
+          droppedFiles.push({ name, html, content_type: "doc" });
         } else {
           const content = await file.text();
           const name = file.name.replace(/\.(html|md|markdown)$/i, "");
           droppedFiles.push({ name, html: content, content_type: isHtml ? "html" : "markdown" });
         }
       } catch {
-        // Silently skip files that can't be read
+        setDropError(`Couldn't read "${file.name}"`);
+        setTimeout(() => setDropError(null), 5000);
       }
     }
 
@@ -366,6 +385,14 @@ export default function TabSidebar({
             title="Add Markdown tab"
           >
             <span>+</span> MD
+          </button>
+          <button
+            onClick={() => onAdd("doc")}
+            disabled={tabs.length >= 20}
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            title="Add Doc tab"
+          >
+            <span>+</span> Doc
           </button>
         </div>
       </div>
@@ -467,7 +494,7 @@ export default function TabSidebar({
               : "border-hairline bg-surface text-muted hover:border-primary/50 hover:text-body-strong"
           }`}>
             <p className="text-[10px] text-center font-medium">
-              {dragOver ? "Drop files here" : "Drag HTML, MD or PDF files"}
+              {dragOver ? "Drop files here" : "Drag HTML, MD, PDF or DOCX files"}
             </p>
           </div>
         )}
