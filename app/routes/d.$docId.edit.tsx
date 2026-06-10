@@ -10,12 +10,11 @@ import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle, extractMarkdownTitle, deriveMarkdownTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 import { ThemeToggle } from "~/components/ThemeToggle";
+import { maxBytesForType, type TabContentType } from "~/lib/limits";
 
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
-
-const MAX_HTML_BYTES = 500_000;   // 500 KB per HTML/MD tab
-const MAX_PDF_BYTES  = 2_800_000; // 2 MB PDF → ~2.7 MB base64 (Vercel limit is 4.5 MB total)
+const DocEditor = lazy(() => import("~/components/DocEditor"));
 const MAX_TABS = 20;
 
 // ── Loader ──────────────────────────────────────────────────────────────────
@@ -142,15 +141,17 @@ export async function action({ params, request }: Route.ActionArgs) {
       }
       // Detect new tabs: no id, or a client-side "new:..." temp id
       const isNew = !tab.id || tab.id.startsWith("new:");
-      const contentType: "html" | "markdown" | "pdf" =
+      const contentType: TabContentType =
         tab.content_type === "markdown" ? "markdown"
         : tab.content_type === "pdf"    ? "pdf"
+        : tab.content_type === "doc"    ? "doc"
         : "html";
       if (isNew) {
         const tabId = newTabId();
         const name = (tab.name || "New Tab").slice(0, 200);
         const html = tab.html || (contentType === "markdown"
           ? `# ${name}\n\n`
+          : contentType === "doc" ? `<h1>${name}</h1><p></p>`
           : contentType === "pdf" ? ""
           : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
         const existingSlugSet = new Set([...slugMap.values()]);
@@ -164,8 +165,7 @@ export async function action({ params, request }: Route.ActionArgs) {
       } else {
         const html = tab.html ?? "";
         const byteLen = new TextEncoder().encode(html).length;
-        if (contentType === "pdf"  && byteLen > MAX_PDF_BYTES)  continue;
-        if (contentType !== "pdf"  && byteLen > MAX_HTML_BYTES) continue;
+        if (byteLen > maxBytesForType(contentType)) continue;
         const name = (tab.name || (contentType === "markdown"
           ? extractMarkdownTitle(html, "Tab")
           : contentType === "pdf" ? "PDF"
@@ -401,18 +401,18 @@ export default function EditPage() {
     if (tab) { setActiveTabId(id); setPreviewHtml(tab.html); }
   }
 
-  function handleAddTab(type: "html" | "markdown" = "html") {
+  function handleAddTab(type: "html" | "markdown" | "doc" = "html") {
     if (tabs.length >= MAX_TABS) return;
     const position = tabs.length;
     const name = `Tab ${position + 1}`;
     markDirty();
-    // Use a temp id with "new:" prefix
     const tempId = `new:${Date.now()}`;
     const slug = dedupeSlug(slugify(name), new Set(tabs.map((t) => t.slug)));
     const html = type === "markdown"
       ? `# ${name}\n\n`
+      : type === "doc"
+      ? `<h1>${name}</h1><p></p>`
       : `<!DOCTYPE html>\n<html>\n<head><title>${name}</title></head>\n<body>\n</body>\n</html>`;
-    // Register new tab for auto-naming (name matches the generic title in the HTML/MD).
     tabAutoNamesRef.current.set(tempId, name);
     setTabs((prev) => [...prev, { id: tempId, slug, name, position, html, content_type: type }]);
     setActiveTabId(tempId);
@@ -471,7 +471,7 @@ export default function EditPage() {
     if (activeTabId === id) { setActiveTabId(filtered[0].id); setPreviewHtml(filtered[0].html); }
   }
 
-  function handleDropFiles(files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" }>) {
+  function handleDropFiles(files: Array<{ name: string; html: string; content_type: "html" | "markdown" | "pdf" | "doc" }>) {
     const GENERIC = /^(untitled.*|tab \d+|new tab)$/i;
 
     // If we only have 1 tab and it matches a generic/placeholder name, replace it entirely
@@ -567,11 +567,13 @@ export default function EditPage() {
           {saving && <span className="text-xs font-medium flex items-center gap-1 text-primary"><span className="w-1.5 h-1.5 rounded-full animate-pulse bg-primary"></span>Saving...</span>}
           {saved && !saving && <span className="text-xs font-medium text-subtle">Saved</span>}
 
-          <div className="hidden sm:flex rounded border p-0.5 ml-2 bg-surface border-hairline">
-            <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "code" ? "bg-card text-ink" : "text-subtle"}`}>Code</button>
-            <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "split" ? "bg-card text-ink" : "text-subtle"}`}>Split</button>
-            <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "preview" ? "bg-card text-ink" : "text-subtle"}`}>View</button>
-          </div>
+          {activeTab?.content_type !== "doc" && (
+            <div className="hidden sm:flex rounded border p-0.5 ml-2 bg-surface border-hairline">
+              <button onClick={() => setLayout("code")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "code" ? "bg-card text-ink" : "text-subtle"}`}>Code</button>
+              <button onClick={() => setLayout("split")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "split" ? "bg-card text-ink" : "text-subtle"}`}>Split</button>
+              <button onClick={() => setLayout("preview")} className={`px-2.5 py-1 text-[10px] uppercase tracking-wider font-bold rounded-sm transition-colors ${layout === "preview" ? "bg-card text-ink" : "text-subtle"}`}>View</button>
+            </div>
+          )}
 
           <a href={viewUrl} target="_blank" rel="noopener noreferrer"
             className="hidden sm:flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2 border bg-card border-hairline text-body hover:bg-strong"
@@ -623,8 +625,8 @@ export default function EditPage() {
           ))}
         </div>
 
-        {/* Monaco editor — hidden for PDF tabs */}
-        {(layout === "split" || layout === "code") && activeTab?.content_type !== "pdf" && (
+        {/* Monaco editor — hidden for PDF and doc tabs */}
+        {(layout === "split" || layout === "code") && activeTab?.content_type !== "pdf" && activeTab?.content_type !== "doc" && (
           <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
             {/* Type toggle */}
             <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-[#333]">
@@ -657,8 +659,22 @@ export default function EditPage() {
           </div>
         )}
 
+        {/* Doc WYSIWYG editor — full width, is its own preview */}
+        {activeTab?.content_type === "doc" && (
+          <div className="flex-1 overflow-hidden">
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading editor…</div>}>
+              <DocEditor
+                key={activeTab.id}
+                value={activeTab.html}
+                onChange={handleHtmlChange}
+                onBlur={save}
+              />
+            </Suspense>
+          </div>
+        )}
+
         {/* Preview */}
-        {(layout === "split" || layout === "preview") && (
+        {(layout === "split" || layout === "preview") && activeTab?.content_type !== "doc" && (
           <div className={`flex-1 overflow-hidden flex flex-col bg-canvas ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
             <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading…</div>}>
               <PreviewIframe html={previewHtml} contentType={activeTab?.content_type ?? "html"} />
