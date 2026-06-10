@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
+import { docToHtml } from "~/lib/doc";
 
 interface PreviewIframeProps {
   html: string;
   title?: string;
-  contentType?: "html" | "markdown" | "pdf";
+  contentType?: "html" | "markdown" | "pdf" | "doc";
 }
 
 interface FrameState {
@@ -58,7 +59,10 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   const isDarkRef = useRef(isDark);
   useEffect(() => { isDarkRef.current = isDark; }, [isDark]);
 
-  const resolvedHtml = contentType === "markdown" ? markdownToHtml(html) : html;
+  const resolvedHtml =
+    contentType === "markdown" ? markdownToHtml(html)
+    : contentType === "doc"    ? docToHtml(html)
+    : html;
   const [frames, setFrames] = useState<FrameState[]>([{ id: 0, html: resolvedHtml, ready: true }]);
   const nextId = useRef(1);
   const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());

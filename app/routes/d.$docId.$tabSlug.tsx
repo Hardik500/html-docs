@@ -12,7 +12,7 @@ interface Tab {
   slug: string;
   name: string;
   position: number;
-  content_type: "html" | "markdown" | "pdf";
+  content_type: "html" | "markdown" | "pdf" | "doc";
 }
 
 interface LoaderData {

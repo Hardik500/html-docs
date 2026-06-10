@@ -3,6 +3,7 @@ import { query } from "~/lib/db.server";
 import { rawResponseHeaders } from "~/lib/csp.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
+import { docToHtml } from "~/lib/doc";
 
 export async function loader({ params }: Route.LoaderArgs) {
   const { docId, tabSlug } = params;
@@ -27,7 +28,10 @@ export async function loader({ params }: Route.LoaderArgs) {
     });
   }
 
-  const document = content_type === "markdown" ? markdownToHtml(html) : html;
+  const document =
+    content_type === "markdown" ? markdownToHtml(html)
+    : content_type === "doc"    ? docToHtml(html)
+    : html;
 
   return new Response(injectDefaultStyles(document), {
     status: 200,

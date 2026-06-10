@@ -6,6 +6,7 @@ import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
+import { docToHtml } from "~/lib/doc";
 import { Modal } from "~/components/Modal";
 import { ThemeToggle } from "~/components/ThemeToggle";
 
@@ -51,7 +52,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   const docs = docsResult.rows.map((doc) => {
     const d = new Date(doc.last_activity_at);
     const html = doc.html && doc.first_tab_content_type !== "pdf"
-      ? (doc.first_tab_content_type === "markdown" ? markdownToHtml(doc.html) : doc.html)
+      ? (doc.first_tab_content_type === "markdown" ? markdownToHtml(doc.html)
+         : doc.first_tab_content_type === "doc"    ? docToHtml(doc.html)
+         : doc.html)
       : null;
     return { ...doc, html, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
   });
