@@ -199,6 +199,13 @@ export default function TabSidebar({
   const [dropError, setDropError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(256);
+  const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function showDropError(message: string) {
+    setDropError(message);
+    if (dropErrorTimerRef.current) clearTimeout(dropErrorTimerRef.current);
+    dropErrorTimerRef.current = setTimeout(() => setDropError(null), 5000);
+  }
 
   // Strip HTML once per content change — not on every keypress.
   const strippedContents = useMemo(
@@ -310,8 +317,7 @@ export default function TabSidebar({
           // Cap at 2 MB — base64 inflates to ~2.7 MB, keeping the total
           // save payload well under Vercel's 4.5 MB serverless limit.
           if (file.size > 2 * 1024 * 1024) {
-            setDropError(`"${file.name}" is too large — PDF must be under 2 MB`);
-            setTimeout(() => setDropError(null), 5000);
+            showDropError(`"${file.name}" is too large — PDF must be under 2 MB`);
             continue;
           }
           const base64 = await new Promise<string>((resolve, reject) => {
@@ -326,9 +332,12 @@ export default function TabSidebar({
           const { default: mammoth } = await import("mammoth/mammoth.browser");
           const arrayBuffer = await file.arrayBuffer();
           const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
+          if (!html.trim()) {
+            showDropError(`"${file.name}" couldn't be converted — no readable content`);
+            continue;
+          }
           if (new TextEncoder().encode(html).length > MAX_DOC_BYTES) {
-            setDropError(`"${file.name}" is too large after conversion — must be under 2.8 MB`);
-            setTimeout(() => setDropError(null), 5000);
+            showDropError(`"${file.name}" is too large after conversion — must be under 2.8 MB`);
             continue;
           }
           const name = file.name.replace(/\.docx$/i, "");
@@ -339,8 +348,7 @@ export default function TabSidebar({
           droppedFiles.push({ name, html: content, content_type: isHtml ? "html" : "markdown" });
         }
       } catch {
-        setDropError(`Couldn't read "${file.name}"`);
-        setTimeout(() => setDropError(null), 5000);
+        showDropError(`Couldn't read "${file.name}"`);
       }
     }
 
