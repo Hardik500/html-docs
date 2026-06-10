@@ -66,7 +66,10 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
         onClick={() => {
           if (editor.isActive("link")) { editor.chain().focus().unsetLink().run(); return; }
           const url = window.prompt("Link URL");
-          if (url) editor.chain().focus().setLink({ href: url }).run();
+          if (url) {
+            const href = /^[a-z][a-z0-9+.-]*:/i.test(url) ? url : `https://${url}`;
+            editor.chain().focus().setLink({ href }).run();
+          }
         }}>🔗</ToolbarButton>
       <span className="w-px h-4 bg-hairline mx-1" />
       <ToolbarButton title="Undo" disabled={!editor.can().undo()}
@@ -83,6 +86,10 @@ export default function DocEditor({ value, onChange, onBlur }: DocEditorProps) {
     content: value,
     // React Router SSRs this route; TipTap must not render on the server.
     immediatelyRender: false,
+    // In @tiptap/react v3, shouldRerenderOnTransaction defaults to false.
+    // Without this flag, toolbar isActive() highlights and can().undo/redo
+    // disabled states are frozen (stale) after each editor transaction.
+    shouldRerenderOnTransaction: true,
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
     onBlur: () => onBlur?.(),
   });
