@@ -228,6 +228,11 @@ export default function EditPage() {
   // handler will add the real ID to tabsToDeleteRef so it gets cleaned up.
   const deletedTempIdsRef = useRef<Set<string>>(new Set());
 
+  // Maps server-assigned tab IDs back to the original client temp ID so the
+  // DocEditor's React key stays stable across the temp→real ID swap (a key
+  // change would remount TipTap mid-edit, wiping cursor and undo history).
+  const editorKeyRef = useRef<Map<string, string>>(new Map());
+
   // Track last saved state to prevent duplicate saves
   const lastSavePayloadRef = useRef<string>("");
 
@@ -321,6 +326,9 @@ export default function EditPage() {
 
       // Swap client-side "new:..." temp IDs for real IDs the server assigned.
       if (data.createdTabs?.length) {
+        for (const { tempId, id } of data.createdTabs) {
+          editorKeyRef.current.set(id, editorKeyRef.current.get(tempId) ?? tempId);
+        }
         const map = new Map(data.createdTabs.map((t) => [t.tempId, t]));
         setTabs((prev) =>
           prev.map((t) => {
@@ -664,7 +672,7 @@ export default function EditPage() {
           <div className="flex-1 overflow-hidden">
             <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading editor…</div>}>
               <DocEditor
-                key={activeTab.id}
+                key={editorKeyRef.current.get(activeTab.id) ?? activeTab.id}
                 value={activeTab.html}
                 onChange={handleHtmlChange}
                 onBlur={save}
