@@ -217,8 +217,11 @@ export default function EditPage() {
   // autosave loop immediately schedules another save for the new changes.
   const newChangesRef = useRef(titleDerived); // titleDerived = already unsaved
 
-  // When true, user has manually edited the doc title — HTML changes stop driving it.
-  const docTitleLockedRef = useRef(false);
+  // When true, the doc title has been set (auto or manually) — only the user can change it.
+  // Start locked if the loaded title is already non-generic so a previously saved
+  // meaningful title is never overwritten by editing any tab.
+  const GENERIC_TITLE = /^(untitled.*|tab \d+|new tab)$/i;
+  const docTitleLockedRef = useRef(!GENERIC_TITLE.test(doc.title.trim()));
 
   // Track tab IDs to delete on next save
   const tabsToDeleteRef = useRef<Set<string>>(new Set());
@@ -395,9 +398,12 @@ export default function EditPage() {
       )
     );
 
-    // If tab name auto-updated AND doc title hasn't been manually locked, sync it.
-    if (shouldAutoName && !docTitleLockedRef.current) {
+    // Auto-sync doc title only from the FIRST tab, only while it hasn't been set yet.
+    // Once set (auto or manually), lock it so switching tabs never changes it again.
+    const isFirstTab = currentTabs[0]?.id === currentTabId;
+    if (shouldAutoName && !docTitleLockedRef.current && isFirstTab) {
       setDocTitle(newDerived!);
+      docTitleLockedRef.current = true;
     }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -534,7 +540,7 @@ export default function EditPage() {
           : extractTitle(first.html, "");
         if (derived) {
           setDocTitle(derived);
-          docTitleLockedRef.current = false;
+          docTitleLockedRef.current = true; // lock after auto-set from drop
         }
       }
     }
