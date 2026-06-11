@@ -40,6 +40,8 @@ function ToolbarButton({
 }
 
 function Toolbar({ editor }: { editor: TiptapEditor }) {
+  const inTable = editor.isActive("table");
+
   return (
     <div className="flex flex-wrap items-center gap-0.5 px-3 py-1.5 border-b border-hairline bg-surface shrink-0">
       <ToolbarButton title="Bold" active={editor.isActive("bold")}
@@ -72,6 +74,104 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
           }
         }}>🔗</ToolbarButton>
       <span className="w-px h-4 bg-hairline mx-1" />
+
+      {/* ── Table controls ───────────────────────────────────────────── */}
+      {/* Insert table — only available when NOT already inside one */}
+      <ToolbarButton
+        title="Insert table"
+        disabled={inTable}
+        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>
+        </svg>
+      </ToolbarButton>
+
+      {/* Context-sensitive table editing — only shown when cursor is inside a table */}
+      {inTable && (
+        <>
+          <span className="w-px h-4 bg-hairline mx-1" />
+
+          {/* Row operations */}
+          <ToolbarButton title="Insert row above"
+            disabled={!editor.can().addRowBefore()}
+            onClick={() => editor.chain().focus().addRowBefore().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="9" width="18" height="12" rx="1"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="12" y1="3" x2="12" y2="7"/><line x1="9" y1="5" x2="15" y2="5"/>
+            </svg>
+          </ToolbarButton>
+          <ToolbarButton title="Insert row below"
+            disabled={!editor.can().addRowAfter()}
+            onClick={() => editor.chain().focus().addRowAfter().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="12" rx="1"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="9" y1="19" x2="15" y2="19"/>
+            </svg>
+          </ToolbarButton>
+          <ToolbarButton title="Delete row"
+            disabled={!editor.can().deleteRow()}
+            onClick={() => editor.chain().focus().deleteRow().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/>
+            </svg>
+          </ToolbarButton>
+
+          <span className="w-px h-4 bg-hairline mx-0.5" />
+
+          {/* Column operations */}
+          <ToolbarButton title="Insert column before"
+            disabled={!editor.can().addColumnBefore()}
+            onClick={() => editor.chain().focus().addColumnBefore().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="3" width="12" height="18" rx="1"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="12" x2="7" y2="12"/><line x1="5" y1="9" x2="5" y2="15"/>
+            </svg>
+          </ToolbarButton>
+          <ToolbarButton title="Insert column after"
+            disabled={!editor.can().addColumnAfter()}
+            onClick={() => editor.chain().focus().addColumnAfter().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="12" height="18" rx="1"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="17" y1="12" x2="21" y2="12"/><line x1="19" y1="9" x2="19" y2="15"/>
+            </svg>
+          </ToolbarButton>
+          <ToolbarButton title="Delete column"
+            disabled={!editor.can().deleteColumn()}
+            onClick={() => editor.chain().focus().deleteColumn().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="1"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="12" y1="9" x2="12" y2="15"/>
+            </svg>
+          </ToolbarButton>
+
+          <span className="w-px h-4 bg-hairline mx-0.5" />
+
+          {/* Merge / split */}
+          <ToolbarButton title="Merge selected cells"
+            disabled={!editor.can().mergeCells()}
+            onClick={() => editor.chain().focus().mergeCells().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="21"/>
+            </svg>
+          </ToolbarButton>
+          <ToolbarButton title="Split merged cell"
+            disabled={!editor.can().splitCell()}
+            onClick={() => editor.chain().focus().splitCell().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="1"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="12" y1="3" x2="12" y2="21"/>
+            </svg>
+          </ToolbarButton>
+
+          <span className="w-px h-4 bg-hairline mx-0.5" />
+
+          {/* Delete table */}
+          <ToolbarButton title="Delete table"
+            disabled={!editor.can().deleteTable()}
+            onClick={() => editor.chain().focus().deleteTable().run()}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500">
+              <rect x="3" y="3" width="18" height="18" rx="1"/><line x1="9" y1="9" x2="15" y2="15"/><line x1="15" y1="9" x2="9" y2="15"/>
+            </svg>
+          </ToolbarButton>
+        </>
+      )}
+
+      <span className="w-px h-4 bg-hairline mx-1" />
       <ToolbarButton title="Undo" disabled={!editor.can().undo()}
         onClick={() => editor.chain().focus().undo().run()}>↶</ToolbarButton>
       <ToolbarButton title="Redo" disabled={!editor.can().redo()}
@@ -82,7 +182,7 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
 
 export default function DocEditor({ value, onChange, onBlur }: DocEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit, Image, TableKit.configure({ table: { resizable: false } })],
+    extensions: [StarterKit, Image, TableKit.configure({ table: { resizable: true } })],
     content: value,
     // React Router SSRs this route; TipTap must not render on the server.
     immediatelyRender: false,
