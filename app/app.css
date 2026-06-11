@@ -109,7 +109,8 @@ body {
 .doc-editor .ProseMirror blockquote { border-left: 4px solid var(--color-hairline); margin: 1em 0; padding: 0.5em 1em; color: var(--color-muted); }
 .doc-editor .ProseMirror pre { background: var(--color-surface); padding: 1em; border-radius: 6px; overflow-x: auto; margin: 1em 0; }
 .doc-editor .ProseMirror code { font-family: ui-monospace, monospace; font-size: 0.875em; background: var(--color-surface); padding: 0.15em 0.35em; border-radius: 3px; }
-.doc-editor .ProseMirror table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+.doc-editor .ProseMirror .tableWrapper { overflow-x: auto; margin: 1em 0; }
+.doc-editor .ProseMirror table { border-collapse: collapse; min-width: 100%; margin: 0; }
 .doc-editor .ProseMirror th, .doc-editor .ProseMirror td { border: 1px solid var(--color-hairline); padding: 0.5em 0.75em; text-align: left; }
 .doc-editor .ProseMirror th { background: var(--color-surface); font-weight: 600; }
 .doc-editor .ProseMirror hr { border: none; border-top: 1px solid var(--color-hairline); margin: 2em 0; }
