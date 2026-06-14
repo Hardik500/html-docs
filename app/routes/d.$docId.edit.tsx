@@ -226,6 +226,11 @@ export default function EditPage() {
   // Track tab IDs to delete on next save
   const tabsToDeleteRef = useRef<Set<string>>(new Set());
 
+  // Track which delete IDs were included in the currently in-flight save so the
+  // completion handler only removes THOSE from the queue (not any deletions that
+  // arrived while the request was in-flight).
+  const inFlightDeletesRef = useRef<Set<string>>(new Set());
+
   // Track "new:..." temp IDs that were deleted while a save was already in flight.
   // If the in-flight save creates a real DB row for one of these, the completion
   // handler will add the real ID to tabsToDeleteRef so it gets cleaned up.
@@ -274,10 +279,16 @@ export default function EditPage() {
     if (isSavingRef.current) return; // already in flight, skip
     if (savedRef.current) return;    // nothing has changed, skip
 
+    // Snapshot which delete IDs we're including in this save.
+    // The completion handler will only remove these — any deletions that arrive
+    // while the request is in-flight stay in tabsToDeleteRef for the next save.
+    const deleteIdsSnapshot = new Set(tabsToDeleteRef.current);
+    inFlightDeletesRef.current = deleteIdsSnapshot;
+
     // Build tabs payload with _delete flags for tabs marked for deletion
     const tabsPayload = [
       ...tabsForSaveRef.current,
-      ...Array.from(tabsToDeleteRef.current).map(id => ({ id, _delete: true, name: "", position: 0 }))
+      ...Array.from(deleteIdsSnapshot).map(id => ({ id, _delete: true, name: "", position: 0 }))
     ];
 
     // Prevent duplicate saves of identical payloads
@@ -305,8 +316,13 @@ export default function EditPage() {
 
     const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
     if (data?.ok) {
-      // Clear the delete queue — these were included in the just-completed save.
-      tabsToDeleteRef.current.clear();
+      // Remove only the delete IDs that were included in the just-completed save.
+      // Any IDs added to the queue while the request was in-flight are left intact
+      // so they get picked up by the next save (fixes zombie-tab race condition).
+      for (const id of inFlightDeletesRef.current) {
+        tabsToDeleteRef.current.delete(id);
+      }
+      inFlightDeletesRef.current = new Set();
 
       // If the server created real rows for tabs that were deleted from the UI
       // while this save was in flight, queue those real IDs for immediate deletion.
@@ -497,10 +513,14 @@ export default function EditPage() {
 
     markDirty();
 
-    // Create new tabs from files
+    // Create new tabs from files.
+    // Seed the slug set with all existing tab slugs so dropped files never
+    // collide with current tabs or with siblings earlier in this same batch.
+    const seenSlugs = new Set(tabs.map((t) => t.slug));
     const newTabs = files.slice(0, maxNewTabs).map((file, index) => {
       const position = index;
-      const slug = dedupeSlug(slugify(file.name), new Set());
+      const slug = dedupeSlug(slugify(file.name), seenSlugs);
+      seenSlugs.add(slug); // reserve so later files in this batch don't reuse it
       const tempId = `new:${Date.now()}-${index}`;
       const name = file.name.slice(0, 200);
       tabAutoNamesRef.current.set(tempId, "\0");
@@ -510,8 +530,12 @@ export default function EditPage() {
     // If we only have one generic tab, mark it for deletion and replace with new ones
     if (shouldReplaceOnlyTab) {
       const oldTabId = tabs[0].id;
-      // Mark the old tab for deletion
-      tabsToDeleteRef.current.add(oldTabId);
+      // Route to the correct queue: temp IDs were never persisted, real IDs need a DB DELETE.
+      if (!oldTabId.startsWith("new:")) {
+        tabsToDeleteRef.current.add(oldTabId);
+      } else {
+        deletedTempIdsRef.current.add(oldTabId);
+      }
       // Set tabs to only the new ones
       setTabs(newTabs);
       // Switch to the first new tab
