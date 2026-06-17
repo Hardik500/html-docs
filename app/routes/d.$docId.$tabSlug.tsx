@@ -20,6 +20,8 @@ interface LoaderData {
   tabs: Tab[];
   activeTab: Tab;
   canEdit: boolean;
+  /** When true, the viewer was opened via a single-tab share link (?solo=1). Hide the TabBar. */
+  solo: boolean;
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -66,11 +68,15 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     tokenFromCookie === doc.edit_token ||
     false;
 
+  const solo = new URL(request.url).searchParams.has("solo");
+
   return {
     doc: { id: doc.id, title: doc.title },
-    tabs,
+    // In solo mode, only expose the active tab so the TabBar can't link to others.
+    tabs: solo ? [activeTab] : tabs,
     activeTab,
     canEdit: Boolean(canEdit),
+    solo,
   } as LoaderData;
 }
 
@@ -79,7 +85,7 @@ export const meta: Route.MetaFunction = ({ data }: { data: LoaderData | undefine
 ];
 
 export default function ViewerPage() {
-  const { doc, tabs, activeTab, canEdit } = useLoaderData<LoaderData>();
+  const { doc, tabs, activeTab, canEdit, solo } = useLoaderData<LoaderData>();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [isDark, setIsDark] = useState(
     () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
@@ -131,7 +137,7 @@ export default function ViewerPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ThemeToggle />
-          <ShareBox docId={doc.id} tabSlug={activeTab.slug} />
+          <ShareBox docId={doc.id} tabSlug={activeTab.slug} solo={solo} />
           {canEdit && (
             <Link
               to={`/d/${doc.id}/edit`}
@@ -143,8 +149,8 @@ export default function ViewerPage() {
         </div>
       </header>
 
-      {/* Tab bar */}
-      <TabBar tabs={tabs} activeSlug={activeTab.slug} docId={doc.id} />
+      {/* Tab bar — hidden in solo mode so the viewer can only see the shared tab */}
+      {!solo && <TabBar tabs={tabs} activeSlug={activeTab.slug} docId={doc.id} />}
 
       {/* Content */}
       <div className="flex-1 overflow-hidden bg-canvas">

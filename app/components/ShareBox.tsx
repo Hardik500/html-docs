@@ -3,15 +3,18 @@ import { useState } from "react";
 interface ShareBoxProps {
   docId: string;
   tabSlug: string;
+  /** When true, the copied URL includes ?solo=1 to preserve single-tab view mode. */
+  solo?: boolean;
 }
 
-export default function ShareBox({ docId, tabSlug }: ShareBoxProps) {
+export default function ShareBox({ docId, tabSlug, solo }: ShareBoxProps) {
   const [copied, setCopied] = useState(false);
 
-  const viewUrl =
+  const base =
     typeof window !== "undefined"
       ? `${window.location.origin}/d/${docId}/${tabSlug}`
       : `/d/${docId}/${tabSlug}`;
+  const viewUrl = solo ? `${base}?solo=1` : base;
 
   async function handleCopy() {
     try {

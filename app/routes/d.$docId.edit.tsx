@@ -577,6 +577,29 @@ export default function EditPage() {
 
   const viewUrl = `/d/${doc.id}/${activeTab?.slug ?? ""}`;
 
+  // Publish dropdown
+  const [publishOpen, setPublishOpen] = useState(false);
+  const publishRef = useRef<HTMLDivElement>(null);
+  const [publishCopied, setPublishCopied] = useState<"solo" | "all" | null>(null);
+
+  useEffect(() => {
+    if (!publishOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (publishRef.current && !publishRef.current.contains(e.target as Node)) {
+        setPublishOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [publishOpen]);
+
+  function copyPublishUrl(solo: boolean) {
+    const url = `${window.location.origin}${viewUrl}${solo ? "?solo=1" : ""}`;
+    navigator.clipboard.writeText(url).catch(() => {});
+    setPublishCopied(solo ? "solo" : "all");
+    setTimeout(() => { setPublishCopied(null); setPublishOpen(false); }, 1500);
+  }
+
   return (
     <div className="flex flex-col h-screen bg-canvas text-ink">
       {/* Top bar */}
@@ -613,16 +636,64 @@ export default function EditPage() {
             </div>
           )}
 
-          <a href={viewUrl} target="_blank" rel="noopener noreferrer"
-            className="hidden sm:flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 ml-2 border bg-card border-hairline text-body hover:bg-strong"
-          >
-            Publish <span className="text-muted">↗</span>
-          </a>
-          <button onClick={() => navigator.clipboard.writeText(`${window.location.origin}${viewUrl}`)}
-            className="text-xs font-medium px-2 py-1.5 rounded-md transition-colors text-muted hover:text-ink"
-          >
-            Copy link
-          </button>
+          {/* Publish dropdown */}
+          <div className="relative hidden sm:block ml-2" ref={publishRef}>
+            <button
+              onClick={() => setPublishOpen(v => !v)}
+              className="flex text-xs font-medium px-3 py-1.5 rounded-md transition-colors items-center gap-1.5 border bg-card border-hairline text-body hover:bg-strong"
+            >
+              Publish
+              <svg className={`w-3 h-3 transition-transform ${publishOpen ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" /></svg>
+            </button>
+
+            {publishOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-56 rounded-lg shadow-xl z-50 border bg-paper border-hairline overflow-hidden">
+                {/* Current tab only */}
+                <div className="px-3 pt-3 pb-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 text-subtle">Current tab only</p>
+                  <div className="flex gap-1.5">
+                    <a
+                      href={`${viewUrl}?solo=1`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 text-xs px-2 py-1.5 rounded border text-body bg-surface border-hairline hover:bg-strong flex items-center justify-center gap-1 font-medium"
+                    >
+                      Open <span className="text-muted">↗</span>
+                    </a>
+                    <button
+                      onClick={() => copyPublishUrl(true)}
+                      className="flex-1 text-xs px-2 py-1.5 rounded border border-hairline font-medium transition-colors bg-surface text-body hover:bg-strong"
+                    >
+                      {publishCopied === "solo" ? "✓ Copied!" : "Copy link"}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="h-px bg-hairline mx-3" />
+
+                {/* All tabs */}
+                <div className="px-3 pt-2 pb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider mb-2 text-subtle">All tabs</p>
+                  <div className="flex gap-1.5">
+                    <a
+                      href={viewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 text-xs px-2 py-1.5 rounded border text-body bg-surface border-hairline hover:bg-strong flex items-center justify-center gap-1 font-medium"
+                    >
+                      Open <span className="text-muted">↗</span>
+                    </a>
+                    <button
+                      onClick={() => copyPublishUrl(false)}
+                      className="flex-1 text-xs px-2 py-1.5 rounded border border-hairline font-medium transition-colors bg-surface text-body hover:bg-strong"
+                    >
+                      {publishCopied === "all" ? "✓ Copied!" : "Copy link"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <ThemeToggle />
           {!isOwner && (
             <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors text-primary">
