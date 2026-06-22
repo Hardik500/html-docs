@@ -10,6 +10,7 @@ import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle, extractMarkdownTitle, deriveMarkdownTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 import { ThemeToggle } from "~/components/ThemeToggle";
+import DownloadBox from "~/components/DownloadBox";
 import { maxBytesForType, type TabContentType } from "~/lib/limits";
 
 const Editor = lazy(() => import("~/components/Editor"));
@@ -694,6 +695,17 @@ export default function EditPage() {
               </div>
             )}
           </div>
+          {activeTab && (
+            <div className="hidden sm:block">
+              <DownloadBox
+                docId={doc.id}
+                tabSlug={activeTab.slug}
+                tabName={activeTab.name}
+                contentType={activeTab.content_type}
+                isUnsaved={activeTab.id.startsWith("new:")}
+              />
+            </div>
+          )}
           <ThemeToggle />
           {!isOwner && (
             <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors text-primary">

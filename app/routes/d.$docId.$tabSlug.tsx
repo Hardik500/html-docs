@@ -6,6 +6,7 @@ import { getUserId } from "~/lib/auth.server";
 import TabBar from "~/components/TabBar";
 import ShareBox from "~/components/ShareBox";
 import { ThemeToggle } from "~/components/ThemeToggle";
+import DownloadBox from "~/components/DownloadBox";
 
 interface Tab {
   id: string;
@@ -137,6 +138,12 @@ export default function ViewerPage() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <ThemeToggle />
+          <DownloadBox
+            docId={doc.id}
+            tabSlug={activeTab.slug}
+            tabName={activeTab.name}
+            contentType={activeTab.content_type}
+          />
           <ShareBox docId={doc.id} tabSlug={activeTab.slug} solo={solo} />
           {canEdit && (
             <Link
