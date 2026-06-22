@@ -5,11 +5,24 @@ import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
 import { docToHtml } from "~/lib/doc";
 
+const PRINT_CSS = `<style media="print">
+  body { max-width: none !important; }
+  pre {
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    word-break: break-word !important;
+  }
+  table { overflow: visible !important; }
+  img { max-width: 100% !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+</style>`;
+
 const PRINT_SCRIPT = `<script>window.addEventListener('load',function(){setTimeout(function(){window.print();},150);});</script>`;
 
 function injectPrintScript(html: string): string {
-  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${PRINT_SCRIPT}</body>`);
-  return html + "\n" + PRINT_SCRIPT;
+  const injection = PRINT_CSS + "\n" + PRINT_SCRIPT;
+  if (/<\/body>/i.test(html)) return html.replace(/<\/body>/i, `${injection}</body>`);
+  return html + "\n" + injection;
 }
 
 export async function loader({ params, request }: Route.LoaderArgs) {
