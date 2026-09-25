@@ -125,10 +125,11 @@ Open [http://localhost:5173](http://localhost:5173).
 ## Desktop app
 
 The Electron client runs the existing React Router server locally on a
-random loopback port. It uses a PGlite database in the OS user-data directory,
-so documents can be created and edited without a hosted server or network
-connection. The hosted web app continues to use PostgreSQL and Supabase as
-before.
+random loopback port. It uses an account-scoped PGlite workspace in the OS
+user-data directory, so documents can be created and edited without a hosted
+server or network connection. The first account uses the legacy local workspace
+when present; later accounts receive separate workspaces. The hosted web app
+continues to use PostgreSQL and Supabase as before.
 
 ```bash
 npm run desktop:dev

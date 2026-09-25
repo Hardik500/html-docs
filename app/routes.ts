@@ -15,6 +15,7 @@ export default [
   route("/desktop/auth", "routes/desktop.auth.tsx"),
   route("/desktop/auth/callback", "routes/desktop.auth.callback.tsx"),
   route("/desktop/auth/exchange", "routes/desktop.auth.exchange.ts"),
+  route("/desktop/session", "routes/desktop.session.ts"),
   route("/desktop/auth/revoke", "routes/desktop.auth.revoke.ts"),
   route("/dashboard", "routes/dashboard.tsx"),
   route("/dashboard/docs/:id/delete", "routes/dashboard.docs.$id.delete.tsx"),

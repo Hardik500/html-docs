@@ -8,6 +8,12 @@ const SESSION_FILE = "desktop-sync-session.bin";
 const REVOCATION_FILE = "desktop-pending-revocations.bin";
 const LOG_FILE = "desktop-sync.log";
 const SYNC_INTERVAL_MS = 30_000;
+const ACCOUNT_ID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isAccountId(value) {
+  return typeof value === "string" && ACCOUNT_ID_PATTERN.test(value);
+}
 
 function createSyncManager({
   app,
@@ -15,6 +21,7 @@ function createSyncManager({
   getWindow,
   getLocalContext,
   remoteUrl,
+  onAccountChanged,
 }) {
   const normalizedRemoteUrl = normalizeRemoteUrl(remoteUrl, {
     allowHttpLoopback: !app.isPackaged,
@@ -24,6 +31,8 @@ function createSyncManager({
   const revocationPath = path.join(userDataPath, REVOCATION_FILE);
   const logPath = path.join(userDataPath, LOG_FILE);
   let token = null;
+  let accountId = null;
+  let initialized = false;
   let pendingAuthState = null;
   let pendingRevocations = [];
   let syncTimer = null;
@@ -122,13 +131,59 @@ function createSyncManager({
     await persistPendingRevocations();
   }
 
+  async function persistSession() {
+    if (!safeStorage.isEncryptionAvailable() || !token) return;
+    await fs.mkdir(path.dirname(sessionPath), { recursive: true });
+    await fs.writeFile(
+      sessionPath,
+      safeStorage.encryptString(
+        JSON.stringify({ token, accountId: accountId || null }),
+      ),
+    );
+  }
+
+  async function setAccountId(nextAccountId) {
+    if (!isAccountId(nextAccountId) || accountId === nextAccountId) return;
+    accountId = nextAccountId;
+    await persistSession();
+    if (onAccountChanged) await onAccountChanged(nextAccountId);
+  }
+
+  async function resolveAccount() {
+    if (!token || accountId || !normalizedRemoteUrl) return;
+    try {
+      const response = await fetch(`${normalizedRemoteUrl}/desktop/session`, {
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!response.ok) return;
+      const payload = await response.json();
+      if (isAccountId(payload.userId)) await setAccountId(payload.userId);
+    } catch {
+      // Offline startup keeps the current workspace available until identity
+      // can be resolved on a later sync attempt.
+    }
+  }
+
   async function loadToken() {
     if (!safeStorage.isEncryptionAvailable()) return;
     try {
       const encrypted = await fs.readFile(sessionPath);
-      token = safeStorage.decryptString(encrypted);
+      const stored = safeStorage.decryptString(encrypted);
+      try {
+        const parsed = JSON.parse(stored);
+        token = typeof parsed.token === "string" && parsed.token.startsWith("dhd_")
+          ? parsed.token
+          : null;
+        accountId = isAccountId(parsed.accountId) ? parsed.accountId : null;
+      } catch {
+        // Backward compatibility with the original token-only session file.
+        token = stored.startsWith("dhd_") ? stored : null;
+        accountId = null;
+      }
     } catch {
       token = null;
+      accountId = null;
     }
     if (token) {
       setStatus({
@@ -140,12 +195,13 @@ function createSyncManager({
     }
   }
 
-  async function saveToken(nextToken) {
+  async function saveToken(nextToken, nextAccountId) {
     token = nextToken;
-    if (safeStorage.isEncryptionAvailable()) {
-      await fs.mkdir(path.dirname(sessionPath), { recursive: true });
-      await fs.writeFile(sessionPath, safeStorage.encryptString(token));
+    if (isAccountId(nextAccountId)) {
+      accountId = nextAccountId;
     }
+    await persistSession();
+    if (accountId && onAccountChanged) await onAccountChanged(accountId);
     void writeLog("INFO", "Desktop session saved");
     setStatus({
       state: "signed_in",
@@ -240,6 +296,7 @@ function createSyncManager({
   }
 
   async function syncNow() {
+    if (token && !accountId) await resolveAccount();
     if (!token) {
       await retryPendingRevocations();
       setStatus({ state: "signed_out" });
@@ -302,10 +359,14 @@ function createSyncManager({
       signal: AbortSignal.timeout(30_000),
     });
     const payload = await parseSyncResponse(response);
-    if (!payload.token || !String(payload.token).startsWith("dhd_")) {
+    if (
+      !payload.token ||
+      !String(payload.token).startsWith("dhd_") ||
+      !isAccountId(payload.userId)
+    ) {
       throw new Error("Desktop sign-in response was invalid.");
     }
-    await saveToken(String(payload.token));
+    await saveToken(String(payload.token), payload.userId);
     await syncNow();
   }
 
@@ -343,10 +404,17 @@ function createSyncManager({
     }
   }
 
-  async function start() {
+  async function initialize() {
+    if (initialized) return;
     await loadPendingRevocations();
     await loadToken();
+    await resolveAccount();
     await retryPendingRevocations();
+    initialized = true;
+  }
+
+  async function start() {
+    await initialize();
     if (syncTimer) clearInterval(syncTimer);
     syncTimer = setInterval(() => void syncNow(), SYNC_INTERVAL_MS);
     await syncNow();
@@ -358,8 +426,10 @@ function createSyncManager({
   }
 
   return {
+    initialize,
     start,
     stop,
+    getAccountId: () => accountId,
     getStatus: publicStatus,
     startSignIn,
     clearToken,

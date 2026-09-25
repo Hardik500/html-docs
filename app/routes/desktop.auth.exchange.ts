@@ -84,7 +84,7 @@ export async function action({ request }: Route.ActionArgs) {
         new Date(Date.now() + DESKTOP_SESSION_TTL_MS).toISOString(),
       ],
     );
-    return { ok: true as const };
+    return { ok: true as const, userId: authCode.rows[0].user_id };
   });
 
   if (!result.ok) {
@@ -94,7 +94,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   return Response.json(
-    { token },
+    { token, userId: result.userId },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

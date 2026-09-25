@@ -15,6 +15,7 @@ const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { createSyncManager } = require("./sync-manager.cjs");
 const { normalizeRemoteUrl } = require("./remote-url.cjs");
+const { getWorkspaceDataDir } = require("./workspace.cjs");
 
 let mainWindow = null;
 let localServer = null;
@@ -101,9 +102,10 @@ function registerProtocolClient() {
   }
 }
 
-async function startLocalServer() {
-  const dataDir = path.join(app.getPath("userData"), "data", "pglite");
-  await fs.mkdir(dataDir, { recursive: true });
+async function startLocalServer({ dataDir } = {}) {
+  const resolvedDataDir =
+    dataDir || (await getWorkspaceDataDir(app.getPath("userData")));
+  await fs.mkdir(resolvedDataDir, { recursive: true });
 
   const port = await getFreePort();
   const token = crypto.randomBytes(32).toString("hex");
@@ -117,7 +119,7 @@ async function startLocalServer() {
   const remoteUrl = getRemoteUrl(appRoot);
 
   process.env.HTML_DOCS_RUNTIME = "desktop";
-  process.env.HTML_DOCS_DATA_DIR = dataDir;
+  process.env.HTML_DOCS_DATA_DIR = resolvedDataDir;
   process.env.HTML_DOCS_DESKTOP_TOKEN = token;
   process.env.HTML_DOCS_SYNC_URL = remoteUrl;
   process.env.NODE_ENV = "production";
@@ -134,7 +136,7 @@ async function startLocalServer() {
   });
 
   localServer = server;
-  localContext = { origin: server.origin, token };
+  localContext = { origin: server.origin, token, dataDir: resolvedDataDir };
   appOrigin = server.origin;
   appToken = token;
   return server;
@@ -175,6 +177,18 @@ function createPreviewWindow(url) {
     openExternal(nextUrl);
   });
   void preview.loadURL(url);
+}
+
+async function authorizeWindow(window, origin, token) {
+  await session.defaultSession.cookies.set({
+    url: `${origin}/`,
+    name: "html_docs_desktop",
+    value: token,
+    httpOnly: true,
+    sameSite: "strict",
+    path: "/",
+  });
+  await window.loadURL(`${origin}/`);
 }
 
 function createWindow({ origin, token }) {
@@ -219,19 +233,25 @@ function createWindow({ origin, token }) {
     mainWindow = null;
   });
 
-  void (async () => {
-    await session.defaultSession.cookies.set({
-      url: `${origin}/`,
-      name: "html_docs_desktop",
-      value: token,
-      httpOnly: true,
-      sameSite: "strict",
-      path: "/",
-    });
-    await mainWindow.loadURL(`${origin}/`);
-  })().catch((error) => {
+  void authorizeWindow(mainWindow, origin, token).catch((error) => {
     console.error("[desktop] failed to load the local app", error);
   });
+}
+
+async function switchLocalWorkspace(accountId) {
+  if (!localServer) return;
+
+  const dataDir = await getWorkspaceDataDir(app.getPath("userData"), accountId);
+  if (localContext?.dataDir === dataDir) return;
+
+  const previousServer = localServer;
+  localServer = null;
+  await previousServer.close();
+  const server = await startLocalServer({ dataDir });
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    await authorizeWindow(mainWindow, server.origin, appToken);
+  }
 }
 
 function configureDownloads() {
@@ -253,14 +273,27 @@ function configureDownloads() {
 }
 
 async function launch() {
-  const server = await startLocalServer();
+  const appRoot = app.isPackaged
+    ? app.getAppPath()
+    : path.resolve(__dirname, "..");
+  const remoteUrl = getRemoteUrl(appRoot);
+  process.env.HTML_DOCS_SYNC_URL = remoteUrl;
+
   syncManager = createSyncManager({
     app,
     safeStorage,
     getWindow: () => mainWindow,
     getLocalContext: () => localContext,
-    remoteUrl: process.env.HTML_DOCS_SYNC_URL || "",
+    remoteUrl,
+    onAccountChanged: switchLocalWorkspace,
   });
+  await syncManager.initialize();
+
+  const dataDir = await getWorkspaceDataDir(
+    app.getPath("userData"),
+    syncManager.getAccountId() || undefined,
+  );
+  const server = await startLocalServer({ dataDir });
   await syncManager.start();
   syncManagerReady = true;
   if (pendingProtocolUrl) {

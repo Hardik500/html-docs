@@ -24,6 +24,7 @@ vi.mock("~/lib/runtime.server", () => ({
 import { getUser, hashDesktopAuthCode, hashDesktopToken } from "~/lib/auth.server";
 import { loader as desktopAuthCallback } from "~/routes/desktop.auth.callback";
 import { action as exchangeDesktopAuth } from "~/routes/desktop.auth.exchange";
+import { loader as desktopSession } from "~/routes/desktop.session";
 
 const supabase = {
   auth: {
@@ -137,12 +138,36 @@ describe("desktop authentication", () => {
     } as unknown as Parameters<typeof exchangeDesktopAuth>[0]);
 
     expect(response.status).toBe(200);
-    const payload = await response.json() as { token: string };
+    const payload = await response.json() as { token: string; userId: string };
     expect(payload.token).toMatch(/^dhd_[A-Za-z0-9_-]{43}$/);
+    expect(payload.userId).toBe("desktop-user");
     expect(mocks.query).toHaveBeenCalledWith(
       expect.stringContaining("INSERT INTO desktop_sessions"),
       ["desktop-user", hashDesktopToken(payload.token), expect.any(String)],
     );
+  });
+
+  it("returns the authenticated desktop account identity", async () => {
+    mocks.query.mockResolvedValue({
+      rows: [{
+        user_id: "11111111-1111-4111-8111-111111111111",
+        email: "person@example.com",
+      }],
+    });
+
+    const response = await desktopSession({
+      request: new Request("https://html-docs.example/desktop/session", {
+        headers: { Authorization: "Bearer dhd_desktop-token" },
+      }),
+      params: {},
+      context: {},
+    } as unknown as Parameters<typeof desktopSession>[0]);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      userId: "11111111-1111-4111-8111-111111111111",
+      email: "person@example.com",
+    });
   });
 
   it("preserves Supabase bearer authentication for non-desktop tokens", async () => {
