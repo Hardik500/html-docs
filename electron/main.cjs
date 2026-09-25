@@ -14,6 +14,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { pathToFileURL } = require("node:url");
 const { createSyncManager } = require("./sync-manager.cjs");
+const { normalizeRemoteUrl } = require("./remote-url.cjs");
 
 let mainWindow = null;
 let localServer = null;
@@ -63,22 +64,31 @@ function loadDevelopmentEnv(appRoot) {
 
 function getRemoteUrl(appRoot) {
   loadDevelopmentEnv(appRoot);
-  const configPath = path.join(appRoot, "electron", "runtime-config.json");
-  if (existsSync(configPath)) {
-    try {
-      const config = JSON.parse(readFileSync(configPath, "utf8"));
-      if (typeof config.remoteUrl === "string" && config.remoteUrl.trim()) {
-        return config.remoteUrl.trim().replace(/\/+$/, "");
+
+  let configuredValue = "";
+  if (!app.isPackaged) {
+    configuredValue = process.env.HTML_DOCS_REMOTE_URL || process.env.APP_URL || "";
+  }
+
+  if (!configuredValue) {
+    const configPath = path.join(appRoot, "electron", "runtime-config.json");
+    if (existsSync(configPath)) {
+      try {
+        const config = JSON.parse(readFileSync(configPath, "utf8"));
+        if (typeof config.remoteUrl === "string") configuredValue = config.remoteUrl;
+      } catch (error) {
+        throw new Error(`[desktop] could not read runtime config: ${error.message}`);
       }
-    } catch (error) {
-      console.warn("[desktop] could not read runtime config", error);
     }
   }
-  return (
-    process.env.HTML_DOCS_REMOTE_URL ||
-    process.env.APP_URL ||
-    ""
-  ).replace(/\/+$/, "");
+
+  if (!configuredValue && app.isPackaged) {
+    configuredValue = process.env.HTML_DOCS_REMOTE_URL || process.env.APP_URL || "";
+  }
+
+  return normalizeRemoteUrl(configuredValue, {
+    allowHttpLoopback: !app.isPackaged,
+  });
 }
 
 function registerProtocolClient() {

@@ -2,15 +2,12 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { randomBytes } = require("node:crypto");
 const { shell } = require("electron");
+const { normalizeRemoteUrl } = require("./remote-url.cjs");
 
 const SESSION_FILE = "desktop-sync-session.bin";
 const REVOCATION_FILE = "desktop-pending-revocations.bin";
 const LOG_FILE = "desktop-sync.log";
 const SYNC_INTERVAL_MS = 30_000;
-
-function normalizeRemoteUrl(value) {
-  return typeof value === "string" ? value.replace(/\/+$/, "") : "";
-}
 
 function createSyncManager({
   app,
@@ -19,7 +16,9 @@ function createSyncManager({
   getLocalContext,
   remoteUrl,
 }) {
-  const normalizedRemoteUrl = normalizeRemoteUrl(remoteUrl);
+  const normalizedRemoteUrl = normalizeRemoteUrl(remoteUrl, {
+    allowHttpLoopback: !app.isPackaged,
+  });
   const userDataPath = app.getPath("userData");
   const sessionPath = path.join(userDataPath, SESSION_FILE);
   const revocationPath = path.join(userDataPath, REVOCATION_FILE);

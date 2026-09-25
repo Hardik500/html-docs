@@ -2,6 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { normalizeRemoteUrl } = require("../electron/remote-url.cjs");
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const envPath = resolve(root, ".env");
@@ -25,7 +29,9 @@ if (existsSync(envPath)) {
   }
 }
 
-const remoteUrl = (env.HTML_DOCS_REMOTE_URL || env.APP_URL || "").replace(/\/+$/, "");
+const remoteUrl = normalizeRemoteUrl(env.HTML_DOCS_REMOTE_URL || env.APP_URL || "", {
+  allowHttpLoopback: false,
+});
 if (env.DESKTOP_REQUIRE_REMOTE_URL === "1" && !remoteUrl) {
   console.error("HTML_DOCS_REMOTE_URL is required for this desktop build.");
   process.exit(1);

@@ -2,6 +2,10 @@ import { existsSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { extractFile } from "@electron/asar";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const { normalizeRemoteUrl } = require("../electron/remote-url.cjs");
 
 const root = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const releaseDir = resolve(root, "release");
@@ -27,7 +31,13 @@ if (!archive) {
 const config = JSON.parse(
   extractFile(archive, "electron/runtime-config.json").toString("utf8"),
 );
-if (process.env.DESKTOP_REQUIRE_REMOTE_URL === "1" && !config.remoteUrl) {
+if (config.remoteUrl && typeof config.remoteUrl !== "string") {
+  throw new Error("Packaged desktop remote URL must be a string");
+}
+const remoteUrl = config.remoteUrl
+  ? normalizeRemoteUrl(config.remoteUrl, { allowHttpLoopback: false })
+  : "";
+if (process.env.DESKTOP_REQUIRE_REMOTE_URL === "1" && !remoteUrl) {
   throw new Error("Packaged desktop app has an empty remote URL");
 }
 
@@ -36,4 +46,4 @@ if (packageJson.main !== "electron/main.cjs") {
   throw new Error(`Unexpected packaged Electron entry: ${packageJson.main}`);
 }
 
-console.log(`Verified ${archive}: remoteUrl=${config.remoteUrl || "(local-only)"}`);
+console.log(`Verified ${archive}: remoteUrl=${remoteUrl || "(local-only)"}`);
