@@ -182,7 +182,7 @@ function Toolbar({ editor }: { editor: TiptapEditor }) {
 
 export default function DocEditor({ value, onChange, onBlur }: DocEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit, Image, TableKit.configure({ table: { resizable: true } })],
+    extensions: [StarterKit, Image.configure({ allowBase64: true }), TableKit.configure({ table: { resizable: true } })],
     content: value,
     // React Router SSRs this route; TipTap must not render on the server.
     immediatelyRender: false,
