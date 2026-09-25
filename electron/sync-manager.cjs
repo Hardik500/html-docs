@@ -5,6 +5,7 @@ const { shell } = require("electron");
 
 const SESSION_FILE = "desktop-sync-session.bin";
 const REVOCATION_FILE = "desktop-pending-revocations.bin";
+const LOG_FILE = "desktop-sync.log";
 const SYNC_INTERVAL_MS = 30_000;
 
 function normalizeRemoteUrl(value) {
@@ -19,11 +20,13 @@ function createSyncManager({
   remoteUrl,
 }) {
   const normalizedRemoteUrl = normalizeRemoteUrl(remoteUrl);
-  const sessionPath = path.join(app.getPath("userData"), SESSION_FILE);
-  const revocationPath = path.join(app.getPath("userData"), REVOCATION_FILE);
+  const userDataPath = app.getPath("userData");
+  const sessionPath = path.join(userDataPath, SESSION_FILE);
+  const revocationPath = path.join(userDataPath, REVOCATION_FILE);
+  const logPath = path.join(userDataPath, LOG_FILE);
   let token = null;
-  let pendingRevocations = [];
   let pendingAuthState = null;
+  let pendingRevocations = [];
   let syncTimer = null;
   let syncing = false;
   let status = {
@@ -35,6 +38,18 @@ function createSyncManager({
       ? "Sign in to sync this device."
       : "Configure HTML_DOCS_REMOTE_URL to enable cloud sync.",
   };
+
+  async function writeLog(level, message) {
+    const line = `${new Date().toISOString()} [${level}] ${message}\n`;
+    if (level === "ERROR") console.error(line.trim());
+    else console.log(line.trim());
+    try {
+      await fs.mkdir(path.dirname(logPath), { recursive: true });
+      await fs.appendFile(logPath, line, "utf8");
+    } catch {
+      // Logging must never prevent the sync worker from running.
+    }
+  }
 
   function publicStatus() {
     return {
@@ -132,6 +147,7 @@ function createSyncManager({
       await fs.mkdir(path.dirname(sessionPath), { recursive: true });
       await fs.writeFile(sessionPath, safeStorage.encryptString(token));
     }
+    void writeLog("INFO", "Desktop session saved");
     setStatus({
       state: "signed_in",
       message: safeStorage.isEncryptionAvailable()
@@ -161,6 +177,7 @@ function createSyncManager({
     } catch {
       // Ignore missing session files and filesystem races during shutdown.
     }
+    void writeLog("INFO", "Desktop session cleared");
     setStatus({
       state: "signed_out",
       pending: 0,
@@ -183,12 +200,14 @@ function createSyncManager({
     if (!normalizedRemoteUrl) {
       const message = "Cloud sync is not configured for this desktop build.";
       setStatus({ state: "error", message });
+      void writeLog("ERROR", message);
       throw new Error(message);
     }
     pendingAuthState = randomBytes(32).toString("base64url");
     const url = new URL(authUrl(email));
     url.searchParams.set("state", pendingAuthState);
     await shell.openExternal(url.toString());
+    void writeLog("INFO", "Desktop sign-in started");
     setStatus({ state: "awaiting_auth", message: "Check your browser to continue sign-in." });
   }
 
@@ -234,13 +253,13 @@ function createSyncManager({
     if (syncing) return;
     syncing = true;
     setStatus({ state: "syncing", message: "Syncing local documents…" });
+    void writeLog("INFO", `Starting push/pull against ${normalizedRemoteUrl}`);
 
     try {
-      console.log(`[desktop-sync] starting push/pull against ${normalizedRemoteUrl}`);
       const push = await parseSyncResponse(await callLocal("push"));
-      console.log(`[desktop-sync] push complete: ${JSON.stringify(push)}`);
+      void writeLog("INFO", `Push completed: ${JSON.stringify(push)}`);
       const pull = await parseSyncResponse(await callLocal("pull"));
-      console.log(`[desktop-sync] pull complete: ${JSON.stringify(pull)}`);
+      void writeLog("INFO", `Pull completed: ${JSON.stringify(pull)}`);
       const conflicts = [...(push.conflicts ?? []), ...(pull.conflicts ?? [])];
       const partial = Boolean(pull.partial);
       setStatus({
@@ -255,7 +274,10 @@ function createSyncManager({
             : "All local documents are synced.",
       });
     } catch (error) {
-      console.error("[desktop-sync] failed", error);
+      void writeLog(
+        "ERROR",
+        `Sync failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
       if (error.status === 401) {
         await clearToken();
         return;
@@ -296,12 +318,14 @@ function createSyncManager({
       const error = url.searchParams.get("error");
       if (error) {
         setStatus({ state: "error", message: error });
+        void writeLog("ERROR", `Desktop sign-in error: ${error}`);
         return true;
       }
       const code = url.searchParams.get("code");
       const state = url.searchParams.get("state") || "";
       if (!code || !/^dac_[A-Za-z0-9_-]{43}$/.test(code)) {
         setStatus({ state: "error", message: "The desktop sign-in response was invalid." });
+        void writeLog("ERROR", "Desktop sign-in response was invalid");
         return true;
       }
       void redeemAuthorizationCode(code, state).catch((error) => {
@@ -309,6 +333,10 @@ function createSyncManager({
           state: "error",
           message: error instanceof Error ? error.message : "Desktop sign-in failed.",
         });
+        void writeLog(
+          "ERROR",
+          `Desktop sign-in failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
       });
       return true;
     } catch {
