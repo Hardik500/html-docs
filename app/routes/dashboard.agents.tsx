@@ -112,19 +112,51 @@ export default function DashboardAgents() {
                 {copied ? "Copied" : "Copy"}
               </button>
             </div>
-            <pre className="mt-4 overflow-x-auto rounded-lg bg-white p-3 text-xs">
+            <div className="mt-5 space-y-4">
+              <div>
+                <h3 className="font-semibold">OpenCode</h3>
+                <p className="mt-1 text-xs">
+                  Add this to your OpenCode configuration, then set the token in your shell before starting OpenCode.
+                </p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
+{`{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "html-docs": {
+        "type": "remote",
+        "url": "https://html-docs-pink.vercel.app/mcp",
+        "oauth": false,
+        "headers": {
+          "Authorization": "Bearer {env:HTML_DOCS_MCP_TOKEN}"
+        }
+      }
+    }
+  }
+}`}
+                </pre>
+                <p className="mt-2 text-xs">
+                  Set <code className="font-mono">HTML_DOCS_MCP_TOKEN</code> in the environment, restart OpenCode, and run <code className="font-mono">opencode mcp list</code>.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold">Other HTTP MCP clients</h3>
+                <p className="mt-1 text-xs">Replace the placeholder with the token shown above.</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
 {`{
   "mcpServers": {
     "html-docs": {
       "type": "http",
       "url": "https://html-docs-pink.vercel.app/mcp",
       "headers": {
-        "Authorization": "Bearer ${createdToken}"
+        "Authorization": "Bearer hdo_<paste-token>"
       }
     }
   }
 }`}
-            </pre>
+                </pre>
+              </div>
+            </div>
           </div>
         )}
 
