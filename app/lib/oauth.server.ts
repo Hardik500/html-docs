@@ -15,7 +15,9 @@ export const AUTHORIZATION_CODE_TTL_SECONDS = 300;
 export const ACCESS_TOKEN_TTL_SECONDS = 3600;
 export const REFRESH_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
-const CLIENT_ID_PATTERN = /^mcp_[A-Za-z0-9_-]{32}$/;
+// randomBytes(32).toString("base64url") yields 43 characters, so every
+// generated token pattern below must be 43 — not the 32-byte input length.
+const CLIENT_ID_PATTERN = /^mcp_[A-Za-z0-9_-]{43}$/;
 const AUTHORIZATION_CODE_PATTERN = /^hac_[A-Za-z0-9_-]{43}$/;
 const ACCESS_TOKEN_PATTERN = /^hat_[A-Za-z0-9_-]{43}$/;
 const REFRESH_TOKEN_PATTERN = /^hrt_[A-Za-z0-9_-]{43}$/;

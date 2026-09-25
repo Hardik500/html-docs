@@ -18,7 +18,7 @@ import {
   validateRedirectUri,
 } from "~/lib/oauth.server";
 
-const CLIENT_ID = `mcp_${"a".repeat(32)}`;
+const CLIENT_ID = `mcp_${"a".repeat(43)}`;
 const REDIRECT_URI = "http://127.0.0.1:53219/callback";
 const VERIFIER = "v".repeat(64);
 const CHALLENGE = base64UrlSha256(VERIFIER);
@@ -99,6 +99,34 @@ describe("OAuth dynamic client registration", () => {
     expect(mocks.query).toHaveBeenCalledWith(
       expect.stringContaining("INSERT INTO agent_oauth_clients"),
       [client.clientId, "My agent", [REDIRECT_URI]],
+    );
+  });
+
+  it("issues a client_id that the lookup path can actually resolve", async () => {
+    // Regression: the client_id pattern once demanded 32 characters while the
+    // generator produced 43, so every real registration failed at authorize.
+    mocks.query.mockResolvedValue({ rows: [] });
+    const client = await registerClient({
+      clientName: "My agent",
+      redirectUris: [REDIRECT_URI],
+    });
+
+    mocks.query.mockResolvedValueOnce({
+      rows: [
+        {
+          id: "client-pk",
+          client_id: client.clientId,
+          client_name: "My agent",
+          redirect_uris: [REDIRECT_URI],
+          revoked_at: null,
+        },
+      ],
+    });
+    const found = await findClient(client.clientId);
+    expect(found.id).toBe("client-pk");
+    expect(mocks.query).toHaveBeenLastCalledWith(
+      expect.stringContaining("FROM agent_oauth_clients"),
+      [client.clientId],
     );
   });
 

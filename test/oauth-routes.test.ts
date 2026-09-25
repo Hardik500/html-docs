@@ -150,7 +150,7 @@ describe("MCP token endpoint", () => {
           rows: [
             {
               id: "client-pk",
-              client_id: `mcp_${"a".repeat(32)}`,
+              client_id: `mcp_${"a".repeat(43)}`,
               client_name: "Agent",
               redirect_uris: ["http://127.0.0.1:4000/cb"],
               revoked_at: null,
@@ -164,7 +164,7 @@ describe("MCP token endpoint", () => {
             {
               code_hash: "h",
               client_pk: "client-pk",
-              client_id: `mcp_${"a".repeat(32)}`,
+              client_id: `mcp_${"a".repeat(43)}`,
               redirect_uris: ["http://127.0.0.1:4000/cb"],
               user_id: "user-1",
               redirect_uri: "http://127.0.0.1:4000/cb",
@@ -197,7 +197,7 @@ describe("MCP token endpoint", () => {
       grant_type: "authorization_code",
       code: `hac_${"c".repeat(43)}`,
       code_verifier: "v".repeat(64),
-      client_id: `mcp_${"a".repeat(32)}`,
+      client_id: `mcp_${"a".repeat(43)}`,
       redirect_uri: "http://127.0.0.1:4000/cb",
     });
     const body = await response.json();
@@ -215,7 +215,7 @@ describe("MCP token endpoint", () => {
       grant_type: "authorization_code",
       code: "nope",
       code_verifier: "v".repeat(64),
-      client_id: `mcp_${"a".repeat(32)}`,
+      client_id: `mcp_${"a".repeat(43)}`,
       redirect_uri: "http://127.0.0.1:4000/cb",
     });
     expect((await response.json()).error).toBe("invalid_grant");
