@@ -48,7 +48,7 @@ function parseCookies(header: string): Record<string, string> {
   return map;
 }
 
-function serializeCookie(
+export function serializeCookie(
   name: string,
   value: string,
   opts: CookieOptions = {}
@@ -58,7 +58,7 @@ function serializeCookie(
   if (opts.path) str += `; Path=${opts.path}`;
   if (opts.expires) str += `; Expires=${opts.expires.toUTCString()}`;
   if (opts.httpOnly) str += `; HttpOnly`;
-  if (opts.secure) str += `; Secure`;
+  if (opts.secure || process.env.NODE_ENV === "production") str += `; Secure`;
   if (opts.sameSite) {
     const ss =
       typeof opts.sameSite === "boolean"
