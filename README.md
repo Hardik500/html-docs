@@ -181,6 +181,31 @@ Create an agent token from **Dashboard → Agents**, choosing only the scopes th
 
 Agent tokens are stored hashed and can be revoked from the dashboard.
 
+### OAuth 2.1
+
+Clients that support MCP authorization can skip manual token creation. Point the client at the endpoint and it will discover the authorization server, register itself, and open a browser consent screen:
+
+```json
+{
+  "mcpServers": {
+    "html-docs": {
+      "type": "http",
+      "url": "https://your-hosted-origin.example.com/mcp"
+    }
+  }
+}
+```
+
+The server implements the public-client profile only:
+
+- Dynamic client registration at `/oauth/register`
+- Authorization code flow with PKCE `S256` at `/oauth/authorize`
+- `authorization_code` and `refresh_token` grants at `/oauth/token`
+- Token revocation at `/oauth/revoke`
+- Discovery at `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server`
+
+Access tokens are opaque, expire after one hour, and are bound to the MCP resource they were issued for. Refresh tokens rotate on every use; presenting an already-rotated refresh token revokes the whole client grant. No client secrets are ever issued.
+
 ### Tools and scopes
 
 | Scope | Tools |
@@ -195,7 +220,7 @@ Every mutating tool requires an explicit `baseRevision` argument. Read the docum
 
 Mutating tools also accept an optional `idempotencyKey`. Repeating a call with the same key replays the original result instead of writing twice, so retried or re-emitted tool calls stay safe.
 
-The MCP endpoint requires hosted migrations that create the `agent_access_tokens`, `agent_audit_events`, and `agent_idempotency_keys` tables. Migrations are not run by the Vercel build; run the release migration explicitly before enabling the endpoint in production.
+The MCP endpoint requires hosted migrations that create the `agent_access_tokens`, `agent_audit_events`, `agent_idempotency_keys`, `agent_oauth_clients`, `agent_oauth_authorization_codes`, `agent_oauth_refresh_tokens`, and `agent_oauth_grants` tables. Migrations are not run by the Vercel build; run the release migration explicitly before enabling the endpoint in production.
 
 ## Configuration
 

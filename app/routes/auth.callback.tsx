@@ -72,10 +72,9 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const rawRedirect = url.searchParams.get("redirect") ?? "";
-  const redirectTo =
-    rawRedirect.startsWith("/") && !rawRedirect.startsWith("//")
-      ? rawRedirect
-      : "/dashboard";
+  // Reject protocol-relative and backslash forms, which browsers resolve as
+  // "//host" and would turn into an open redirect.
+  const redirectTo = /^\/(?!\/)[^\r\n\\]*$/.test(rawRedirect) ? rawRedirect : "/dashboard";
 
   return redirect(redirectTo, { headers: responseHeaders });
 }

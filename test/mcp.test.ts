@@ -76,7 +76,39 @@ describe("hosted MCP endpoint", () => {
     mocks.authenticateAgentToken.mockResolvedValue(null);
     const response = await call("POST", { jsonrpc: "2.0", id: 1, method: "tools/list" }, "");
     expect(response.status).toBe(401);
-    expect(response.headers.get("www-authenticate")).toBe('Bearer realm="html-docs"');
+    expect(response.headers.get("www-authenticate")).toBe(
+      'Bearer realm="html-docs", resource_metadata="https://html-docs.example/.well-known/oauth-protected-resource/mcp"',
+    );
+  });
+
+  it("rejects a credential minted for a different MCP resource", async () => {
+    mocks.authenticateAgentToken.mockResolvedValue({
+      ...identity,
+      credentialType: "oauth",
+      resource: "https://other-deployment.example/mcp",
+    });
+    const response = await call("POST", {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: {},
+    });
+    expect(response.status).toBe(401);
+  });
+
+  it("accepts a credential bound to this exact resource", async () => {
+    mocks.authenticateAgentToken.mockResolvedValue({
+      ...identity,
+      credentialType: "oauth",
+      resource: "https://html-docs.example/mcp",
+    });
+    const response = await call("POST", {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list",
+      params: {},
+    });
+    expect(response.status).toBe(200);
   });
 
   it("rejects non-POST transport methods", async () => {

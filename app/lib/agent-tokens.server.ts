@@ -4,11 +4,16 @@ import { query } from "./db.server";
 export const AGENT_SCOPES = ["docs:read", "docs:write", "docs:delete"] as const;
 export type AgentScope = (typeof AGENT_SCOPES)[number];
 
+export type AgentCredentialType = "pat" | "oauth";
+
 export interface AgentIdentity {
   tokenId: string;
   userId: string;
   email: string;
   scopes: AgentScope[];
+  /** MCP resource this credential is bound to, when audience-scoped. */
+  resource?: string;
+  credentialType?: AgentCredentialType;
   expiresAt?: number;
 }
 
@@ -116,15 +121,17 @@ export async function revokeAgentToken(userId: string, tokenId: string): Promise
 }
 
 export async function authenticateAgentToken(token: string): Promise<AgentIdentity | null> {
-  if (!token.startsWith("hdo_")) return null;
+  if (!token.startsWith("hdo_") && !token.startsWith("hat_")) return null;
   const result = await query<{
     token_id: string;
     user_id: string;
     email: string | null;
     scopes: string[];
     expires_at: string | null;
+    resource: string | null;
+    credential_type: string;
   }>(
-    `SELECT t.id AS token_id, t.user_id, u.email, t.scopes, t.expires_at
+    `SELECT t.id AS token_id, t.user_id, u.email, t.scopes, t.expires_at, t.resource, t.credential_type
        FROM agent_access_tokens t
        JOIN auth.users u ON u.id = t.user_id
       WHERE t.token_hash = $1
@@ -145,6 +152,8 @@ export async function authenticateAgentToken(token: string): Promise<AgentIdenti
     userId: row.user_id,
     email: row.email ?? "",
     scopes: normalizeAgentScopes(row.scopes),
+    ...(row.resource ? { resource: row.resource } : {}),
+    ...(row.credential_type ? { credentialType: row.credential_type as AgentCredentialType } : {}),
     ...(row.expires_at ? { expiresAt: Math.floor(new Date(row.expires_at).getTime() / 1000) } : {}),
   };
 }

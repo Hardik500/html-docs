@@ -32,6 +32,7 @@ export const migrations = [
   "0008_desktop_auth_codes.sql",
   "0009_agent_tokens.sql",
   "0010_agent_write_idempotency.sql",
+  "0011_mcp_oauth.sql",
 ];
 
 export async function runMigrations(pool, logger = console) {

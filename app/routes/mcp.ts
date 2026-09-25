@@ -50,6 +50,8 @@ function corsHeaders(request: Request): HeadersInit {
 }
 
 function unauthorized(request: Request): Response {
+  const resource = resourceUrl(request);
+  const metadataUrl = new URL("/.well-known/oauth-protected-resource/mcp", resource).toString();
   return Response.json(
     { error: "unauthorized", message: "A valid html-docs agent token is required." },
     {
@@ -57,10 +59,16 @@ function unauthorized(request: Request): Response {
       headers: {
         ...corsHeaders(request),
         "Cache-Control": "no-store",
-        "WWW-Authenticate": 'Bearer realm="html-docs"',
+        "WWW-Authenticate": `Bearer realm="html-docs", resource_metadata="${metadataUrl}"`,
       },
     },
   );
+}
+
+/** Rejects a credential minted for a different MCP resource. */
+function isWrongAudience(identity: AgentIdentity, request: Request): boolean {
+  if (!identity.resource) return false;
+  return identity.resource.replace(/\/+$/, "") !== resourceUrl(request).toString().replace(/\/+$/, "");
 }
 
 function toolResult(value: Record<string, unknown>) {
@@ -391,6 +399,7 @@ async function handleMcpRequest(request: Request): Promise<Response> {
     );
   }
   if (!identity) return unauthorized(request);
+  if (isWrongAudience(identity, request)) return unauthorized(request);
 
   try {
     const allowed = await checkMcpRate(identity.tokenId);

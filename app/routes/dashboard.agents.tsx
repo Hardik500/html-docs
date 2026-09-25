@@ -10,6 +10,7 @@ import {
   revokeAgentToken,
   type AgentScope,
 } from "~/lib/agent-tokens.server";
+import { findOwnedGrantClient, listUserOAuthGrants, revokeClientGrants } from "~/lib/oauth.server";
 
 const SCOPE_OPTIONS: Array<{ scope: AgentScope; label: string; hint: string }> = [
   { scope: "docs:read", label: "Read", hint: "List, search, and read documents and tabs" },
@@ -22,7 +23,11 @@ export const meta: Route.MetaFunction = () => [{ title: "Agent access — html-d
 export async function loader(_args: Route.LoaderArgs) {
   if (isDesktopRuntime()) throw new Response("Not found", { status: 404 });
   const userId = await requireUserId(_args.request);
-  return { tokens: await listAgentTokens(userId) };
+  const [tokens, grants] = await Promise.all([
+    listAgentTokens(userId),
+    listUserOAuthGrants(userId),
+  ]);
+  return { tokens, grants };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -44,6 +49,17 @@ export async function action({ request }: Route.ActionArgs) {
     return { revoked: true };
   }
 
+  if (intent === "revoke-grant") {
+    const grantId = String(formData.get("grantId") ?? "").trim();
+    if (grantId) {
+      // Scoped to the signed-in user, so a forged id cannot revoke someone
+      // else's authorization.
+      const clientPk = await findOwnedGrantClient(userId, grantId);
+      if (clientPk) await revokeClientGrants(userId, clientPk);
+    }
+    return { revokedGrant: true };
+  }
+
   return { error: "Invalid agent action" };
 }
 
@@ -54,7 +70,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function DashboardAgents() {
-  const { tokens } = useLoaderData<typeof loader>();
+  const { tokens, grants } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [copied, setCopied] = useState(false);
   const createdToken = actionData && "token" in actionData ? actionData.token : null;
@@ -174,6 +190,23 @@ export default function DashboardAgents() {
                 </p>
               </div>
               <div>
+                <h3 className="font-semibold">Clients with browser sign-in (no token needed)</h3>
+                <p className="mt-1 text-xs">
+                  The client discovers the authorization server, registers itself, and asks you to
+                  approve access in the browser.
+                </p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
+{`{
+  "mcpServers": {
+    "html-docs": {
+      "type": "http",
+      "url": "https://html-docs-pink.vercel.app/mcp"
+    }
+  }
+}`}
+                </pre>
+              </div>
+              <div>
                 <h3 className="font-semibold">Other HTTP MCP clients</h3>
                 <p className="mt-1 text-xs">Replace the placeholder with the token shown above.</p>
                 <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
@@ -219,6 +252,52 @@ export default function DashboardAgents() {
                       <Form method="post">
                         <input type="hidden" name="intent" value="revoke" />
                         <input type="hidden" name="tokenId" value={token.id} />
+                        <button
+                          type="submit"
+                          className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          Revoke
+                        </button>
+                      </Form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Connected OAuth clients</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-muted">
+            Clients that signed in through the browser authorization flow appear here. Revoking
+            one immediately invalidates its access and refresh tokens.
+          </p>
+          {grants.length === 0 ? (
+            <p className="mt-3 rounded-xl border border-dashed border-hairline bg-surface p-6 text-sm text-muted">
+              No OAuth clients have connected yet.
+            </p>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {grants.map((grant) => {
+                const inactive = Boolean(grant.revokedAt);
+                return (
+                  <div
+                    key={grant.id}
+                    className="flex flex-col gap-3 rounded-xl border border-hairline bg-paper p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{grant.clientName}</p>
+                      <p className="mt-1 text-xs text-muted">
+                        {grant.scope} · Connected {formatDate(grant.createdAt)}
+                      </p>
+                    </div>
+                    {inactive ? (
+                      <span className="text-xs font-medium text-subtle">Revoked</span>
+                    ) : (
+                      <Form method="post">
+                        <input type="hidden" name="intent" value="revoke-grant" />
+                        <input type="hidden" name="grantId" value={grant.id} />
                         <button
                           type="submit"
                           className="rounded-lg border border-red-300 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50"

@@ -17,6 +17,14 @@ export const meta: Route.MetaFunction = () => [{ title: "Sign in — html-docs" 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const rawRedirect = String(formData.get("redirect") ?? "").trim();
+  // Only same-origin relative paths may be replayed after sign-in. Reject
+  // protocol-relative and backslash forms that browsers normalize to "//host".
+  const redirectTo =
+    /^\/(?!\/)[^\r\n\\]*$/.test(rawRedirect) ? rawRedirect : "";
+  if (rawRedirect && !redirectTo) {
+    return { error: "Invalid sign-in return path." };
+  }
   const claimDocId = String(formData.get("claimDocId") ?? "").trim();
   const claimEditToken = String(formData.get("claimEditToken") ?? "").trim();
   const hasClaim = Boolean(claimDocId || claimEditToken);
@@ -55,6 +63,7 @@ export async function action({ request }: Route.ActionArgs) {
   const appUrl = (process.env.APP_URL || new URL(request.url).origin).replace(/\/+$/, "");
   const callbackUrl = new URL(`${appUrl}/auth/callback`);
   if (hasClaim) callbackUrl.searchParams.set("claimDocId", claimDocId);
+  if (redirectTo) callbackUrl.searchParams.set("redirect", redirectTo);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
@@ -75,11 +84,15 @@ export async function action({ request }: Route.ActionArgs) {
 export default function MagicLinkPage() {
   const actionData = useActionData<typeof action>();
   // Also surface errors forwarded from /auth/callback via query string
-  const urlError =
-    typeof window !== "undefined"
-      ? new URLSearchParams(window.location.search).get("error")
-      : null;
+  const search =
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const urlError = search.get("error");
   const errorMessage = ('error' in (actionData ?? {}) ? (actionData as { error: string }).error : null) ?? urlError;
+
+  // Preserved so the OAuth authorization request survives the magic-link trip.
+  const returnPath = /^\/(?!\/)[^\r\n\\]*$/.test(search.get("redirect") ?? "")
+    ? (search.get("redirect") as string)
+    : "";
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4 bg-canvas text-ink">
@@ -103,6 +116,7 @@ export default function MagicLinkPage() {
                 {errorMessage}
               </div>
             )}
+            <input type="hidden" name="redirect" value={returnPath} />
             <input
               type="email"
               name="email"
