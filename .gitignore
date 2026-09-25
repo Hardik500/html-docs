@@ -1,6 +1,8 @@
 .DS_Store
 .env
 /node_modules/
+/release/
+/electron/runtime-config.json
 
 # React Router
 /.react-router/

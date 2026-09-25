@@ -1,0 +1,26 @@
+appId: com.html-docs.app
+productName: html-docs
+directories:
+  output: release
+  buildResources: build-resources
+asar: true
+asarUnpack:
+  - node_modules/@electric-sql/pglite/**
+files:
+  - build/**
+  - electron/**
+  - public/**
+  - package.json
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+  category: Office

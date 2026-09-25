@@ -33,7 +33,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     title: string;
     edit_token: string;
     owner_user_id: string | null;
-  }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1", [
+  }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1 AND deleted_at IS NULL", [
     docId,
   ]);
 

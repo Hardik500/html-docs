@@ -10,6 +10,7 @@ import {
 import type { Route } from "./+types/root";
 import { APP_CSP } from "./lib/csp.server";
 import { createSupabaseServerClient } from "./lib/supabase.server";
+import { isDesktopRuntime } from "./lib/runtime.server";
 import "./app.css";
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -21,6 +22,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
     "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
   });
+
+  // The desktop runtime has no hosted Supabase session. Its local server
+  // provides a stable local user through auth.server instead.
+  if (isDesktopRuntime()) {
+    return new Response(null, { headers: responseHeaders });
+  }
 
   // Verify the JWT locally (cached JWKS) and only pay a network round trip to
   // refresh when the access token is missing or near expiry. New tokens are

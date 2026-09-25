@@ -43,6 +43,6 @@ export function rawResponseHeaders(): HeadersInit {
     "Content-Security-Policy": RAW_CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "Cache-Control": "public, max-age=60",
+    "Cache-Control": "no-store",
   };
 }

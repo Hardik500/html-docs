@@ -30,7 +30,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const isPrint = new URL(request.url).searchParams.has("print");
 
   const result = await query<{ html: string; content_type: string }>(
-    "SELECT html, content_type FROM tabs WHERE doc_id = $1 AND slug = $2",
+    `SELECT t.html, t.content_type
+       FROM tabs t
+       JOIN docs d ON d.id = t.doc_id
+      WHERE t.doc_id = $1 AND t.slug = $2 AND d.deleted_at IS NULL`,
     [docId, tabSlug]
   );
 

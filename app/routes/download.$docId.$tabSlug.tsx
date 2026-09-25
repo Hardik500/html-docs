@@ -20,7 +20,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   }
 
   const result = await query<{ html: string; content_type: string; name: string }>(
-    "SELECT html, content_type, name FROM tabs WHERE doc_id = $1 AND slug = $2",
+    `SELECT t.html, t.content_type, t.name
+       FROM tabs t
+       JOIN docs d ON d.id = t.doc_id
+      WHERE t.doc_id = $1 AND t.slug = $2 AND d.deleted_at IS NULL`,
     [docId, tabSlug]
   );
   if (!result.rows.length) throw new Response("Not Found", { status: 404 });

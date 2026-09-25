@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { query } from "./db.server";
+import { isDesktopRuntime } from "./runtime.server";
 
 const IP_HASH_SALT = process.env.IP_HASH_SALT || "default-salt-change-me";
 
@@ -40,6 +41,8 @@ async function checkAndIncrement(key: string, limit: number, resetAt: Date): Pro
 
 /** 50 anon doc creates per IP per day */
 export async function checkAnonCreateRate(ip: string): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+
   const key = `anon:ip:${hashIp(ip)}:${todayUtc()}`;
   const resetAt = new Date();
   resetAt.setUTCHours(24, 0, 0, 0);
@@ -48,20 +51,37 @@ export async function checkAnonCreateRate(ip: string): Promise<boolean> {
 
 /** 5 magic-link requests per email per minute */
 export async function checkMagicEmailRate(email: string): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+
   const key = `magic:email:${email}:${currentMinuteUtc()}`;
   return checkAndIncrement(key, 5, new Date(Date.now() + 60_000));
 }
 
 /** 20 magic-link requests per IP per day */
 export async function checkMagicIpRate(ip: string): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+
   const key = `magic:ip:${hashIp(ip)}:${todayUtc()}`;
   const resetAt = new Date();
   resetAt.setUTCHours(24, 0, 0, 0);
   return checkAndIncrement(key, 20, resetAt);
 }
 
+/** 30 sync pushes per user/document per minute */
+export async function checkSyncPushRate(
+  userId: string,
+  docId: string,
+): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+
+  const key = `sync:push:${userId}:${docId}:${currentMinuteUtc()}`;
+  return checkAndIncrement(key, 30, new Date(Date.now() + 60_000));
+}
+
 /** 30 saves per doc per minute — prevents write-flood abuse of the auto-save endpoint */
 export async function checkSaveRate(docId: string): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+
   const key = `save:doc:${docId}:${currentMinuteUtc()}`;
   return checkAndIncrement(key, 30, new Date(Date.now() + 60_000));
 }

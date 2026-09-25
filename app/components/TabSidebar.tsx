@@ -196,10 +196,16 @@ export default function TabSidebar({
   onDropFiles,
 }: TabSidebarProps) {
   const [dragOver, setDragOver] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
   const [dropError, setDropError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sidebarWidth, setSidebarWidth] = useState(256);
   const dropErrorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setIsDesktop(Boolean(window.htmlDocsDesktop?.isDesktop));
+  }, []);
 
   function showDropError(message: string) {
     setDropError(message);
@@ -294,6 +300,36 @@ export default function TabSidebar({
     setDragOver(false);
   }
 
+  async function handleNativeOpen() {
+    if (!window.htmlDocsDesktop) return;
+    try {
+      const selected = await window.htmlDocsDesktop.openFiles();
+      if (!selected.length || !rootRef.current) return;
+      const transfer = new DataTransfer();
+      for (const item of selected) {
+        const bytes = Uint8Array.from(atob(item.dataBase64), (char) => char.charCodeAt(0));
+        const extension = item.name.split(".").pop()?.toLowerCase();
+        const type = extension === "pdf"
+          ? "application/pdf"
+          : extension === "docx"
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : extension === "md" || extension === "markdown"
+              ? "text/markdown"
+              : "text/html";
+        transfer.items.add(new File([bytes], item.name, { type }));
+      }
+      rootRef.current.dispatchEvent(
+        new DragEvent("drop", {
+          bubbles: true,
+          cancelable: true,
+          dataTransfer: transfer,
+        }),
+      );
+    } catch (error) {
+      showDropError(error instanceof Error ? error.message : "Couldn't open the selected file");
+    }
+  }
+
   async function handleDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
@@ -359,6 +395,7 @@ export default function TabSidebar({
 
   return (
     <div
+      ref={rootRef}
       className={`relative flex flex-col h-full shrink-0 z-10 border-r bg-surface border-hairline transition-colors ${
         dragOver ? "bg-primary/5 border-primary" : ""
       }`}
@@ -378,6 +415,15 @@ export default function TabSidebar({
           Files
         </span>
         <div className="flex items-center gap-1">
+          {isDesktop && (
+            <button
+              onClick={handleNativeOpen}
+              className="text-xs font-medium transition-colors flex items-center gap-1 px-2 py-1 rounded text-body bg-card border border-hairline hover:bg-strong"
+              title="Open a document from this device"
+            >
+              Open
+            </button>
+          )}
           <button
             onClick={() => onAdd("html")}
             disabled={tabs.length >= 20}

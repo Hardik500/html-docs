@@ -1,17 +1,22 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { useLoaderData, useFetcher, redirect, Link } from "react-router";
+import { useLoaderData, useFetcher, redirect, Link, data } from "react-router";
 import type { Route } from "./+types/d.$docId.edit";
-import { query } from "~/lib/db.server";
+import { query, withTransaction } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
 import { checkSaveRate } from "~/lib/ratelimit.server";
-import { newTabId, newEditToken } from "~/lib/ids";
+import { newTabId } from "~/lib/ids";
 import { slugify, dedupeSlug } from "~/lib/slug";
 import { extractTitle, deriveTitle, extractMarkdownTitle, deriveMarkdownTitle } from "~/lib/titleExtract";
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 import { ThemeToggle } from "~/components/ThemeToggle";
 import DownloadBox from "~/components/DownloadBox";
 import { maxBytesForType, type TabContentType } from "~/lib/limits";
+import {
+  markLocalDocumentDirty,
+  recordDocumentChange,
+} from "~/lib/sync.server";
+import { isDesktopRuntime } from "~/lib/runtime.server";
 
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
@@ -31,8 +36,8 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   // this collapses three sequential remote round trips into one.
   const [docResult, tabsResult, userId] = await Promise.all([
     query<{
-      id: string; title: string; edit_token: string; owner_user_id: string | null;
-    }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1", [docId])
+      id: string; title: string; edit_token: string; owner_user_id: string | null; revision: string | number;
+    }>("SELECT id, title, edit_token, owner_user_id, revision FROM docs WHERE id = $1 AND deleted_at IS NULL", [docId])
       .finally(() => t.mark("q_doc")),
     query<TabItem & { html: string }>(
       "SELECT id, slug, name, position, html, content_type FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
@@ -79,10 +84,11 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   t.end();
   return {
-    doc: { id: doc.id, title: docTitle, editToken: doc.edit_token },
+    doc: { id: doc.id, title: docTitle, editToken: doc.edit_token, revision: Number(doc.revision) },
     tabs,
     userId: userId ?? null,
     isOwner: Boolean(userId && userId === doc.owner_user_id),
+    isDesktop: isDesktopRuntime(),
     titleDerived,
   };
 }
@@ -92,8 +98,12 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 export async function action({ params, request }: Route.ActionArgs) {
   const { docId } = params;
 
-  const docResult = await query<{ edit_token: string; owner_user_id: string | null }>(
-    "SELECT edit_token, owner_user_id FROM docs WHERE id = $1", [docId]
+  const docResult = await query<{
+    edit_token: string;
+    owner_user_id: string | null;
+    revision: string | number;
+  }>(
+    "SELECT edit_token, owner_user_id, revision FROM docs WHERE id = $1 AND deleted_at IS NULL", [docId]
   );
   if (!docResult.rows.length) throw new Response("Not found", { status: 404 });
   const doc = docResult.rows[0];
@@ -117,67 +127,115 @@ export async function action({ params, request }: Route.ActionArgs) {
 
   const body = await request.json() as {
     intent: string;
+    baseRevision?: number;
     title?: string;
     tabs?: Array<{ id?: string; slug?: string; name: string; position: number; html?: string; content_type?: string; _delete?: boolean }>;
   };
 
   if (body.intent === "save") {
-    // Update doc title
-    if (body.title) {
-      await query("UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2", [body.title.slice(0, 500), docId]);
+    if (!Number.isSafeInteger(body.baseRevision) || (body.baseRevision ?? -1) < 0) {
+      return data({ error: "baseRevision is required" }, { status: 428 });
     }
 
-    const existingSlugs = await query<{ id: string; slug: string }>(
-      "SELECT id, slug FROM tabs WHERE doc_id = $1", [docId]
-    );
-    const slugMap = new Map(existingSlugs.rows.map((r) => [r.id, r.slug]));
+    const result = await withTransaction(async (runQuery) => {
+      const current = await runQuery<{
+        edit_token: string;
+        owner_user_id: string | null;
+        revision: string | number;
+      }>(
+        `SELECT edit_token, owner_user_id, revision
+           FROM docs
+          WHERE id = $1 AND deleted_at IS NULL
+          FOR UPDATE`,
+        [docId],
+      );
+      if (!current.rows.length) return { kind: "not-found" as const };
+      const currentDoc = current.rows[0];
+      const authorized =
+        (userId && userId === currentDoc.owner_user_id) ||
+        tokenFromCookie === currentDoc.edit_token;
+      if (!authorized) return { kind: "forbidden" as const };
 
-    // tempId → { realId, slug } for newly created tabs
-    const createdTabs: Array<{ tempId: string; id: string; slug: string }> = [];
-
-    for (const tab of body.tabs ?? []) {
-      if (tab._delete && tab.id) {
-        await query("DELETE FROM tabs WHERE id = $1 AND doc_id = $2", [tab.id, docId]);
-        continue;
+      const currentRevision = Number(currentDoc.revision);
+      if (currentRevision !== body.baseRevision) {
+        return { kind: "conflict" as const, currentRevision };
       }
-      // Detect new tabs: no id, or a client-side "new:..." temp id
-      const isNew = !tab.id || tab.id.startsWith("new:");
-      const contentType: TabContentType =
-        tab.content_type === "markdown" ? "markdown"
-        : tab.content_type === "pdf"    ? "pdf"
-        : tab.content_type === "doc"    ? "doc"
-        : "html";
-      if (isNew) {
-        const tabId = newTabId();
-        const name = (tab.name || "New Tab").slice(0, 200);
-        const html = tab.html || (contentType === "markdown"
-          ? `# ${name}\n\n`
-          : contentType === "doc" ? `<h1>${name}</h1><p></p>`
-          : contentType === "pdf" ? ""
-          : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
-        const existingSlugSet = new Set([...slugMap.values()]);
-        const slug = dedupeSlug(slugify(name), existingSlugSet);
-        slugMap.set(tabId, slug);
-        await query(
-          "INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-          [tabId, docId, slug, name, tab.position, html, contentType]
-        );
-        if (tab.id) createdTabs.push({ tempId: tab.id, id: tabId, slug });
-      } else {
-        const html = tab.html ?? "";
-        const byteLen = new TextEncoder().encode(html).length;
-        if (byteLen > maxBytesForType(contentType)) continue;
-        const name = (tab.name || (contentType === "markdown"
-          ? extractMarkdownTitle(html, "Tab")
-          : contentType === "pdf" ? "PDF"
-          : extractTitle(html, "Tab"))).slice(0, 200);
-        await query(
-          "UPDATE tabs SET name=$1, position=$2, html=$3, content_type=$4, updated_at=now(), version=version+1 WHERE id=$5 AND doc_id=$6",
-          [name, tab.position, html, contentType, tab.id, docId]
+
+      // Update doc title
+      if (body.title) {
+        await runQuery(
+          "UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2",
+          [body.title.slice(0, 500), docId],
         );
       }
+
+      const existingSlugs = await runQuery<{ id: string; slug: string }>(
+        "SELECT id, slug FROM tabs WHERE doc_id = $1",
+        [docId],
+      );
+      const slugMap = new Map(existingSlugs.rows.map((r) => [r.id, r.slug]));
+
+      // tempId → { realId, slug } for newly created tabs
+      const createdTabs: Array<{ tempId: string; id: string; slug: string }> = [];
+
+      for (const tab of body.tabs ?? []) {
+        if (tab._delete && tab.id) {
+          await runQuery("DELETE FROM tabs WHERE id = $1 AND doc_id = $2", [tab.id, docId]);
+          continue;
+        }
+        // Detect new tabs: no id, or a client-side "new:..." temp id
+        const isNew = !tab.id || tab.id.startsWith("new:");
+        const contentType: TabContentType =
+          tab.content_type === "markdown" ? "markdown"
+          : tab.content_type === "pdf"    ? "pdf"
+          : tab.content_type === "doc"    ? "doc"
+          : "html";
+        if (isNew) {
+          const tabId = newTabId();
+          const name = (tab.name || "New Tab").slice(0, 200);
+          const html = tab.html || (contentType === "markdown"
+            ? `# ${name}\n\n`
+            : contentType === "doc" ? `<h1>${name}</h1><p></p>`
+            : contentType === "pdf" ? ""
+            : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
+          const existingSlugSet = new Set([...slugMap.values()]);
+          const slug = dedupeSlug(slugify(name), existingSlugSet);
+          slugMap.set(tabId, slug);
+          await runQuery(
+            "INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type) VALUES ($1,$2,$3,$4,$5,$6,$7)",
+            [tabId, docId, slug, name, tab.position, html, contentType]
+          );
+          if (tab.id) createdTabs.push({ tempId: tab.id, id: tabId, slug });
+        } else {
+          const html = tab.html ?? "";
+          const byteLen = new TextEncoder().encode(html).length;
+          if (byteLen > maxBytesForType(contentType)) continue;
+          const name = (tab.name || (contentType === "markdown"
+            ? extractMarkdownTitle(html, "Tab")
+            : contentType === "pdf" ? "PDF"
+            : extractTitle(html, "Tab"))).slice(0, 200);
+          await runQuery(
+            "UPDATE tabs SET name=$1, position=$2, html=$3, content_type=$4, updated_at=now(), version=version+1 WHERE id=$5 AND doc_id=$6",
+            [name, tab.position, html, contentType, tab.id, docId]
+          );
+        }
+      }
+
+      const nextRevision =
+        (await recordDocumentChange(runQuery, docId, userId)) ?? currentRevision;
+      await markLocalDocumentDirty(docId, false, runQuery);
+      return { kind: "ok" as const, createdTabs, revision: nextRevision };
+    });
+
+    if (result.kind === "not-found") throw new Response("Not found", { status: 404 });
+    if (result.kind === "forbidden") throw new Response("Forbidden", { status: 403 });
+    if (result.kind === "conflict") {
+      return data(
+        { error: "conflict", currentRevision: result.currentRevision },
+        { status: 409 },
+      );
     }
-    return { ok: true, createdTabs };
+    return { ok: true, createdTabs: result.createdTabs, revision: result.revision };
   }
 
   return { ok: false };
@@ -190,10 +248,13 @@ export const meta: Route.MetaFunction = ({ data }: { data: ReturnType<typeof loa
 ];
 
 export default function EditPage() {
-  const { doc, tabs: initialTabs, userId, isOwner, titleDerived } = useLoaderData<typeof loader>();
+  const { doc, tabs: initialTabs, userId, isOwner, isDesktop, titleDerived } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
 
   const [docTitle, setDocTitle] = useState(doc.title);
+  const docRevisionRef = useRef(doc.revision);
+  const [conflict, setConflict] = useState(false);
+  const conflictRef = useRef(false);
   const [tabs, setTabs] = useState<(TabItem & { html: string })[]>(initialTabs);
   // Stable reference — only changes when tab content actually changes.
   // Passed to TabSidebar so its internal useMemos don't thrash on every editor keystroke.
@@ -251,6 +312,11 @@ export default function EditPage() {
     setSaved(false);
   }
 
+  function updateConflict(value: boolean) {
+    conflictRef.current = value;
+    setConflict(value);
+  }
+
   // Per-tab auto-name tracking. Map<tabId, lastAutoDerivedName | "\0" (locked)>.
   // A tab is "locked" once the user renames it manually.
   const tabAutoNamesRef = useRef<Map<string, string>>(
@@ -277,6 +343,7 @@ export default function EditPage() {
   savedRef.current = saved;
 
   function save() {
+    if (conflictRef.current) return;
     if (isSavingRef.current) return; // already in flight, skip
     if (savedRef.current) return;    // nothing has changed, skip
 
@@ -293,7 +360,11 @@ export default function EditPage() {
     ];
 
     // Prevent duplicate saves of identical payloads
-    const payload = JSON.stringify({ title: docTitleRef.current, tabs: tabsPayload });
+    const payload = JSON.stringify({
+      baseRevision: docRevisionRef.current,
+      title: docTitleRef.current,
+      tabs: tabsPayload,
+    });
     if (payload === lastSavePayloadRef.current) return;
     lastSavePayloadRef.current = payload;
 
@@ -301,7 +372,12 @@ export default function EditPage() {
     isSavingRef.current = true;
     setSaving(true);
     fetcher.submit(
-      { intent: "save", title: docTitleRef.current, tabs: tabsPayload } as unknown as Record<string, string>,
+      {
+        intent: "save",
+        baseRevision: docRevisionRef.current,
+        title: docTitleRef.current,
+        tabs: tabsPayload,
+      } as unknown as Record<string, string>,
       { method: "POST", encType: "application/json", action: `/d/${doc.id}/edit` }
     );
   }
@@ -315,8 +391,23 @@ export default function EditPage() {
     isSavingRef.current = false;
     setSaving(false);
 
-    const data = fetcher.data as { ok?: boolean; createdTabs?: Array<{ tempId: string; id: string; slug: string }> } | undefined;
+    const data = fetcher.data as {
+      ok?: boolean;
+      revision?: number;
+      error?: string;
+      currentRevision?: number;
+      createdTabs?: Array<{ tempId: string; id: string; slug: string }>;
+    } | undefined;
+    if (data?.error === "conflict") {
+      updateConflict(true);
+      setSaved(false);
+      return;
+    }
     if (data?.ok) {
+      if (typeof data.revision === "number") {
+        docRevisionRef.current = data.revision;
+      }
+      updateConflict(false);
       // Remove only the delete IDs that were included in the just-completed save.
       // Any IDs added to the queue while the request was in-flight are left intact
       // so they get picked up by the next save (fixes zombie-tab race condition).
@@ -369,7 +460,7 @@ export default function EditPage() {
 
   // Auto-save logic
   useEffect(() => {
-    if (!saved && !saving) {
+    if (!saved && !saving && !conflict) {
       if (autoSaveRef.current) clearTimeout(autoSaveRef.current);
       autoSaveRef.current = setTimeout(() => {
         save();
@@ -638,6 +729,7 @@ export default function EditPage() {
           )}
 
           {/* Publish dropdown */}
+          {!isDesktop && (
           <div className="relative hidden sm:block ml-2" ref={publishRef}>
             <button
               onClick={() => setPublishOpen(v => !v)}
@@ -695,6 +787,7 @@ export default function EditPage() {
               </div>
             )}
           </div>
+          )}
           {activeTab && (
             <div className="hidden sm:block">
               <DownloadBox
@@ -714,6 +807,19 @@ export default function EditPage() {
           )}
         </div>
       </header>
+
+      {conflict && (
+        <div role="alert" className="flex items-center justify-between gap-4 px-4 py-2 text-xs border-b border-red-300 bg-red-50 text-red-800">
+          <span>This document changed elsewhere. Reload before saving to avoid overwriting newer work.</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="shrink-0 px-2.5 py-1 rounded border border-red-300 font-semibold hover:bg-red-100"
+          >
+            Reload
+          </button>
+        </div>
+      )}
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">

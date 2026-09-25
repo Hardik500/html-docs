@@ -1,11 +1,12 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/docs";
-import { query } from "~/lib/db.server";
+import { withTransaction } from "~/lib/db.server";
 import { newDocId, newTabId, newEditToken } from "~/lib/ids";
 import { slugify } from "~/lib/slug";
 import { extractTitle } from "~/lib/titleExtract";
 import { checkAnonCreateRate } from "~/lib/ratelimit.server";
 import { getUserId } from "~/lib/auth.server";
+import { markLocalDocumentDirty, recordDocumentChange } from "~/lib/sync.server";
 
 const MAX_HTML_BYTES = 1_048_576;
 
@@ -61,17 +62,22 @@ export async function action({ request }: Route.ActionArgs) {
   const docTitle = (titleInput || tabName).slice(0, 500);
   const slug = slugify(tabName) || "tab-1";
 
-  await query(
-    `INSERT INTO docs (id, title, owner_user_id, edit_token)
-     VALUES ($1, $2, $3, $4)`,
-    [docId, docTitle, userId ?? null, editToken]
-  );
+  await withTransaction(async (runQuery) => {
+    await runQuery(
+      `INSERT INTO docs (id, title, owner_user_id, edit_token)
+       VALUES ($1, $2, $3, $4)`,
+      [docId, docTitle, userId ?? null, editToken],
+    );
 
-  await query(
-    `INSERT INTO tabs (id, doc_id, slug, name, position, html)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
-    [tabId, docId, slug, tabName, 0, html]
-  );
+    await runQuery(
+      `INSERT INTO tabs (id, doc_id, slug, name, position, html)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [tabId, docId, slug, tabName, 0, html],
+    );
+
+    await recordDocumentChange(runQuery, docId, userId);
+    await markLocalDocumentDirty(docId, false, runQuery);
+  });
 
   // Set anon edit cookie (scoped to this doc)
   const headers = new Headers();

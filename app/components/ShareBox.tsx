@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface ShareBoxProps {
   docId: string;
@@ -9,6 +9,22 @@ interface ShareBoxProps {
 
 export default function ShareBox({ docId, tabSlug, solo }: ShareBoxProps) {
   const [copied, setCopied] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+
+  useEffect(() => {
+    setIsDesktop(Boolean(window.htmlDocsDesktop?.isDesktop));
+  }, []);
+
+  if (isDesktop) {
+    return (
+      <span
+        className="text-xs font-medium px-3 py-1.5 rounded-md border border-hairline bg-card text-subtle"
+        title="Cloud publishing will be available when desktop sync is enabled"
+      >
+        Local only
+      </span>
+    );
+  }
 
   const base =
     typeof window !== "undefined"

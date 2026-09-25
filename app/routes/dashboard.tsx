@@ -7,6 +7,7 @@ import { createTimer } from "~/lib/perf.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
 import { docToHtml } from "~/lib/doc";
+import { isDesktopRuntime } from "~/lib/runtime.server";
 import { Modal } from "~/components/Modal";
 import { ThemeToggle } from "~/components/ThemeToggle";
 
@@ -40,7 +41,7 @@ export async function loader({ request }: Route.LoaderArgs) {
             (SELECT LEFT(t2.html, POSITION('<body' IN lower(t2.html)) + 8000) FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
      FROM docs d
      LEFT JOIN tabs t ON t.doc_id = d.id
-     WHERE d.owner_user_id = $1
+     WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL
      GROUP BY d.id
      ORDER BY d.last_activity_at DESC
      LIMIT 100`,
@@ -60,11 +61,60 @@ export async function loader({ request }: Route.LoaderArgs) {
   });
 
   t.end();
-  return { docs, email: user.email };
+  return { docs, email: user.email, isDesktop: isDesktopRuntime() };
 }
 
 export default function Dashboard() {
-  const { docs, email } = useLoaderData<typeof loader>();
+  const { docs, email, isDesktop } = useLoaderData<typeof loader>();
+  const [syncStatus, setSyncStatus] = useState<DesktopSyncStatus | null>(null);
+  useEffect(() => {
+    if (!isDesktop || !window.htmlDocsDesktop) return;
+    const desktop = window.htmlDocsDesktop;
+    let mounted = true;
+    void desktop.getSyncStatus().then((status) => {
+      if (mounted && status) setSyncStatus(status);
+    });
+    const unsubscribe = desktop.onSyncStatus((status) => {
+      if (mounted) setSyncStatus(status);
+    });
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
+  }, [isDesktop]);
+
+  async function handleDesktopSyncSignIn() {
+    try {
+      await window.htmlDocsDesktop?.startSignIn();
+    } catch {
+      // The main process reports configuration errors through sync status.
+    }
+  }
+
+  async function handleDesktopSyncNow() {
+    try {
+      await window.htmlDocsDesktop?.syncNow();
+    } catch {
+      // The main process reports sync errors through sync status.
+    }
+  }
+
+  async function handleDesktopSignOut() {
+    await window.htmlDocsDesktop?.signOut();
+  }
+
+  const syncLabel = !syncStatus
+    ? "Sync"
+    : syncStatus.state === "syncing"
+      ? "Syncing…"
+      : syncStatus.state === "conflict"
+        ? `${syncStatus.conflicts} conflict${syncStatus.conflicts === 1 ? "" : "s"}`
+        : syncStatus.state === "synced"
+          ? "Synced"
+          : syncStatus.state === "error"
+            ? "Sync error"
+            : "Sign in to sync";
+
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(
     () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
@@ -99,14 +149,61 @@ export default function Dashboard() {
             <span className="font-semibold text-sm tracking-wide transition-colors text-body-strong">html-docs</span>
           </Link>
         </div>
-        <div className="flex items-center gap-4">
-          <span className="text-sm font-medium text-muted">{email}</span>
+        <div className="flex items-center gap-3">
+          {isDesktop ? (
+            <>
+              <span className="text-xs text-muted" title={syncStatus?.message}>
+                {syncLabel}
+              </span>
+              {syncStatus?.hasToken ? (
+                <button
+                  type="button"
+                  onClick={handleDesktopSyncNow}
+                  className="text-sm font-medium text-primary hover:text-primary-dark"
+                >
+                  Sync now
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleDesktopSyncSignIn}
+                  className="text-sm font-medium text-primary hover:text-primary-dark"
+                >
+                  Sign in to sync
+                </button>
+              )}
+              {syncStatus?.hasToken && (
+                <button
+                  type="button"
+                  onClick={handleDesktopSignOut}
+                  className="text-sm font-medium text-muted hover:text-ink"
+                >
+                  Sign out
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <span className="text-sm font-medium text-muted">{email}</span>
+              <Form method="post" action="/auth/logout">
+                <button type="submit" className="text-sm font-medium transition-colors text-muted hover:text-ink">Sign out</button>
+              </Form>
+            </>
+          )}
           <ThemeToggle />
-          <Form method="post" action="/auth/logout">
-            <button type="submit" className="text-sm font-medium transition-colors text-muted hover:text-ink">Sign out</button>
-          </Form>
         </div>
       </nav>
+
+      {isDesktop && syncStatus?.message && (
+        <div className={`flex items-center justify-between gap-4 px-6 py-2 text-xs border-b ${syncStatus.state === "error" || syncStatus.state === "conflict" ? "border-amber-300 bg-amber-50 text-amber-900" : "border-hairline bg-surface text-muted"}`}>
+          <span>{syncStatus.message}</span>
+          {syncStatus.conflicts > 0 && (
+            <Link to="/desktop/conflicts" className="shrink-0 font-semibold underline">
+              Review conflicts
+            </Link>
+          )}
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-6 py-12">
         <div className="flex items-center justify-between mb-8">
