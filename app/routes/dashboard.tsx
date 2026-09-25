@@ -188,6 +188,9 @@ export default function Dashboard() {
           ) : (
             <>
               <span className="text-sm font-medium text-muted">{email}</span>
+              <Link to="/dashboard/agents" className="text-sm font-medium text-muted hover:text-ink">
+                Agents
+              </Link>
               <Form method="post" action="/auth/logout">
                 <button type="submit" className="text-sm font-medium transition-colors text-muted hover:text-ink">Sign out</button>
               </Form>

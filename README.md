@@ -155,6 +155,34 @@ host can validate packaging with:
 npx electron-builder --dir --linux --config electron-builder.yml
 ```
 
+## MCP server
+
+The hosted app exposes a stateless MCP endpoint at:
+
+```text
+https://your-hosted-origin.example.com/mcp
+```
+
+Create a read-only agent token from **Dashboard → Agents**, then configure an MCP client with the token:
+
+```json
+{
+  "mcpServers": {
+    "html-docs": {
+      "type": "http",
+      "url": "https://your-hosted-origin.example.com/mcp",
+      "headers": {
+        "Authorization": "Bearer hdo_..."
+      }
+    }
+  }
+}
+```
+
+The first MCP release exposes authenticated, read-only tools for listing, searching, and reading owned documents. Write tools and OAuth 2.1 authorization are planned as follow-up work. Agent tokens are stored hashed and can be revoked from the dashboard.
+
+The MCP endpoint requires the hosted database migration that creates the `agent_access_tokens` and `agent_audit_events` tables. Migrations are not run by the Vercel build; run the release migration explicitly before enabling the endpoint in production.
+
 ## Configuration
 
 | Variable | Required | Description |
@@ -168,6 +196,8 @@ npx electron-builder --dir --linux --config electron-builder.yml
 | `HTML_DOCS_REMOTE_URL` | Desktop | Hosted origin used by the Electron client for cloud sync |
 | `IP_HASH_SALT` | Production | Secret salt used before storing hashed client IPs in rate-limit keys |
 | `NODE_ENV` | Production | Enables production behavior and required-variable validation |
+| `MCP_RESOURCE_URL` | Optional | Public MCP resource identifier; defaults to `APP_URL/mcp` |
+| `MCP_ALLOWED_ORIGINS` | Optional | Comma-separated browser origins allowed to call `/mcp` |
 | `PORT` | Optional | Production server port; Fly.io config sets `8080` |
 
 For desktop sign-in, add the following URL to Supabase Auth → URL Configuration → Redirect URLs:
@@ -211,6 +241,8 @@ Key routes:
 | --- | --- |
 | `/` | Landing-page editor and anonymous document creation |
 | `/dashboard` | Signed-in document management |
+| `/dashboard/agents` | Create and revoke MCP agent tokens |
+| `/mcp` | Authenticated remote MCP endpoint |
 | `/d/:docId/edit` | Document editor |
 | `/d/:docId/:tabSlug` | Public document viewer |
 | `/raw/:docId/:tabSlug` | Sandboxed source rendered for the viewer |
