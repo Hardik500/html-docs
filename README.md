@@ -159,6 +159,7 @@ npx electron-builder --dir --linux --config electron-builder.yml
 | Variable | Required | Description |
 | --- | --- | --- |
 | `DATABASE_URL` | Yes | PostgreSQL connection string, including migrations |
+| `DATABASE_CA_CERT_PATH` | Optional | Path to a PEM CA certificate when the database host is not in the system trust store |
 | `SUPABASE_URL` | Yes | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Yes | Supabase anon key used for SSR authentication |
 | `APP_URL` | Yes | Public application origin used for magic-link callbacks |

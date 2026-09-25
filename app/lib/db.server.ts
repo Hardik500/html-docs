@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import { isDesktopRuntime } from "./runtime.server";
 import { validateEnv } from "./env.server";
@@ -15,6 +16,21 @@ let localDatabaseReady: Promise<LocalDatabase> | undefined;
 declare global {
   // eslint-disable-next-line no-var
   var __pgPool: pg.Pool | undefined;
+}
+
+export function getPostgresSslOptions(url: string) {
+  const noSsl =
+    url.includes("localhost") ||
+    url.includes("127.0.0.1") ||
+    url.includes(".internal");
+  if (noSsl) return false;
+
+  const ssl: { rejectUnauthorized: true; ca?: string } = {
+    rejectUnauthorized: true,
+  };
+  const caPath = process.env.DATABASE_CA_CERT_PATH;
+  if (caPath) ssl.ca = readFileSync(caPath, "utf8");
+  return ssl;
 }
 
 function getPostgresPool(): pg.Pool {
@@ -38,18 +54,7 @@ function getPostgresPool(): pg.Pool {
       // Keep TCP connections warm so queries do not pay a fresh TLS handshake
       // to a remote Supabase host on every cold connection.
       keepAlive: true,
-      ssl: (() => {
-        const u = process.env.DATABASE_URL ?? "";
-        const noSsl =
-          u.includes("localhost") ||
-          u.includes("127.0.0.1") ||
-          u.includes(".internal");
-        if (noSsl) return false;
-        // Supabase direct connections use a certificate chain that is not in
-        // Node's default trust store. Keep the existing hosted behaviour here;
-        // desktop mode never constructs this pool.
-        return { rejectUnauthorized: false };
-      })(),
+      ssl: getPostgresSslOptions(process.env.DATABASE_URL ?? ""),
     });
   }
 

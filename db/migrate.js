@@ -11,11 +11,17 @@ const noSsl =
   url.includes("127.0.0.1") ||
   url.includes(".internal");
 
+function getPostgresSslOptions() {
+  if (noSsl) return false;
+  const ssl = { rejectUnauthorized: true };
+  const caPath = process.env.DATABASE_CA_CERT_PATH;
+  if (caPath) ssl.ca = readFileSync(caPath, "utf8");
+  return ssl;
+}
+
 const pool = new pg.Pool({
   connectionString: url || "postgres://localhost/html_docs_dev",
-  // Supabase direct connections use a self-signed cert chain not in Node's trust
-  // store — rejectUnauthorized: false keeps TLS encryption while accepting it.
-  ssl: noSsl ? false : { rejectUnauthorized: false },
+  ssl: getPostgresSslOptions(),
 });
 
 // Ensure the tracking table exists
