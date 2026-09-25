@@ -822,7 +822,7 @@ export default function EditPage() {
       )}
 
       {/* Body */}
-      <div className="flex flex-1 overflow-hidden flex-col sm:flex-row">
+      <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden flex-col sm:flex-row [contain:paint]">
         <div className="hidden sm:block h-full shrink-0">
           <TabSidebar
             tabs={tabs}
@@ -854,7 +854,7 @@ export default function EditPage() {
 
         {/* Monaco editor — hidden for PDF and doc tabs */}
         {(layout === "split" || layout === "code") && activeTab?.content_type !== "pdf" && activeTab?.content_type !== "doc" && (
-          <div className="flex-1 overflow-hidden bg-[#1e1e1e] flex flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
+          <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-[#1e1e1e] flex-col h-1/2 sm:h-auto border-b sm:border-b-0 border-hairline">
             {/* Type toggle */}
             <div className="flex items-center justify-end px-3 py-1.5 shrink-0 border-b border-[#333]">
               <div className="flex rounded border border-[#555] overflow-hidden text-[10px] font-bold uppercase tracking-wider">
@@ -902,7 +902,7 @@ export default function EditPage() {
 
         {/* Preview */}
         {(layout === "split" || layout === "preview") && activeTab?.content_type !== "doc" && (
-          <div className={`flex-1 overflow-hidden flex flex-col bg-canvas ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
+          <div className={`relative isolate min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col bg-canvas [contain:paint] ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
             <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading…</div>}>
               <PreviewIframe html={previewHtml} contentType={activeTab?.content_type ?? "html"} />
             </Suspense>

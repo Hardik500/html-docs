@@ -72,11 +72,11 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   // PDF: bypass the iframe crossfade stack entirely — embed renders natively in the browser.
   if (contentType === "pdf") {
     return (
-      <div className="relative w-full h-full bg-canvas">
+      <div className="relative isolate h-full w-full overflow-hidden bg-canvas [contain:paint]">
         <embed
           src={`data:application/pdf;base64,${html}`}
           type="application/pdf"
-          className="absolute inset-0 w-full h-full border-0"
+          className="absolute inset-0 block h-full w-full border-0"
           title={title}
         />
       </div>
@@ -149,7 +149,7 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   };
 
   return (
-    <div className="relative w-full h-full bg-canvas">
+    <div className="relative isolate h-full w-full overflow-hidden bg-canvas [contain:paint]">
       {frames.map((frame, i) => (
         <iframe
           key={frame.id}
@@ -161,7 +161,7 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
           onLoad={() => handleLoad(frame.id)}
           sandbox="allow-scripts"
           title={title}
-          className="absolute inset-0 w-full h-full border-0"
+          className="absolute inset-0 block h-full w-full border-0"
           style={{
             opacity: frame.ready ? 1 : 0,
             // Fade in when ready; no transition while loading (avoids flash on removal).

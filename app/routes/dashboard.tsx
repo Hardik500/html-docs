@@ -240,7 +240,7 @@ export default function Dashboard() {
                 <div key={doc.id} className={`group flex flex-col rounded-xl shadow-sm hover:shadow-md transition-all hover:-translate-y-0.5 relative border bg-paper border-hairline ${openMenuId === doc.id ? 'z-50' : 'z-10'}`}>
 
                   {/* Thumbnail / Iframe preview */}
-                  <Link to={editHref} className="relative aspect-4/5 block rounded-t-xl overflow-hidden border-b bg-canvas border-hairline">
+                  <Link to={editHref} className="relative isolate block aspect-4/5 overflow-hidden rounded-t-xl border-b bg-canvas border-hairline [contain:paint]">
                     {doc.first_tab_content_type === "pdf" ? (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-2 bg-surface text-subtle">
                         <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
