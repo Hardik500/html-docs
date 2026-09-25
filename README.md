@@ -99,7 +99,7 @@ The database user must be able to reference Supabase's `auth.users` table.
 node --env-file=.env db/migrate.js
 ```
 
-Migrations are tracked in `schema_migrations` and are safe to run more than once. The migration command currently applies `db/migrations/*.sql` through `0008`; add future migrations to the list in `db/migrate.js`.
+Migrations are tracked in `schema_migrations`, and already-recorded files are skipped. The migration command currently applies `db/migrations/*.sql` through `0008`; add future migrations to the list in `db/migrate.js` and keep each migration retry-safe.
 
 ### 4. Start the app
 
@@ -181,7 +181,7 @@ https://your-hosted-origin.example.com/desktop/auth/callback
 - Documents can contain at most 20 tabs.
 - Anonymous creation is limited to 50 documents per IP per UTC day.
 - Save requests are limited to 30 per document per minute; magic-link requests have separate email- and IP-based limits.
-- User documents render in a sandboxed iframe without same-origin privileges. A restrictive content security policy allows inline content and a small set of common CDNs, but blocks forms, nested frames, and object embedding.
+- HTML and Markdown editor/public previews render in sandboxed iframes without same-origin privileges. TipTap document tabs intentionally use the structured in-shell `DocEditor`/`EditorContent` path and require controlled parsing/rendering for pasted or imported content. Dashboard thumbnails use a separate sandboxed `srcDoc` path. Direct navigation to `/raw/:docId/:tabSlug` currently returns executable HTML in the application origin with a restrictive CSP but no response-level browser sandbox, so it requires separate security review.
 - Edit authorization is checked on the server. Authentication cookies are `HttpOnly`.
 
 The app does not sanitize HTML into a restricted component model. Treat published content as executable web content and review the iframe/CSP behavior before hosting untrusted users at scale.
@@ -219,9 +219,10 @@ Key routes:
 ```bash
 npm test
 npm run typecheck
+node test/csp-check.mjs
 ```
 
-The test suite covers HTML-to-Markdown conversion, DOCX import, content limits, and the generated CSP for a set of HTML fixtures.
+The Vitest suite covers the configured unit and integration behavior, including conversion, limits, auth, local database, document, and desktop-sync areas. `test/csp-check.mjs` is a separate manual report-only analyzer; it is not part of `npm test`, does not fail on findings, and does not replace browser verification. No browser E2E suite is currently configured.
 
 ## Deployment
 

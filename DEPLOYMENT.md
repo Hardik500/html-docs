@@ -108,9 +108,16 @@ docker run -p 3000:3000 \
 
 ## Database Migrations
 
-For Railway/Render, migrations run automatically on startup via `db/migrate.js`. The script:
-1. Checks for already-applied migrations
-2. Runs pending migrations
-3. Skips already-applied ones
+Migrations are not run by `npm start` or automatically at application startup. Fly.io runs them through the release command configured in `fly.toml`:
 
-No manual setup needed.
+```bash
+node db/migrate.js
+```
+
+For Railway, Render, or another platform, configure an explicit release/pre-deploy command with the same database environment variables. Run it once per release before serving the new build. A one-off/manual invocation with a local environment file is:
+
+```bash
+node --env-file=.env db/migrate.js
+```
+
+The runner tracks applied files in `schema_migrations`. Every new file under `db/migrations/` must also be registered in the hard-coded list in `db/migrate.js`. The current runner applies each migration and records it in separate operations, so migration SQL must remain retry-safe; do not assume a failed tracking write makes the migration itself transactional.
