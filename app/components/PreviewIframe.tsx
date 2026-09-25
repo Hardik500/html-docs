@@ -9,6 +9,10 @@ interface PreviewIframeProps {
   contentType?: "html" | "markdown" | "pdf" | "doc";
 }
 
+type HtmlPreviewProps = Omit<PreviewIframeProps, "contentType"> & {
+  contentType: "html" | "markdown" | "doc";
+};
+
 interface FrameState {
   id: number;
   html: string;
@@ -53,7 +57,20 @@ function useIsDark() {
   return isDark;
 }
 
-export default function PreviewIframe({ html, title = "Preview", contentType = "html" }: PreviewIframeProps) {
+function PdfPreview({ html, title = "Preview" }: Pick<PreviewIframeProps, "html" | "title">) {
+  return (
+    <div className="relative isolate h-full w-full overflow-hidden bg-canvas [contain:paint]">
+      <embed
+        src={`data:application/pdf;base64,${html}`}
+        type="application/pdf"
+        className="absolute inset-0 block h-full w-full border-0"
+        title={title}
+      />
+    </div>
+  );
+}
+
+function HtmlPreview({ html, title = "Preview", contentType }: HtmlPreviewProps) {
   // All hooks must run unconditionally regardless of contentType.
   const isDark = useIsDark();
   const isDarkRef = useRef(isDark);
@@ -68,20 +85,6 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
   const iframeRefs = useRef<Map<number, HTMLIFrameElement>>(new Map());
   // Tracks the last scroll Y reported by whichever iframe is active.
   const lastScrollY = useRef(0);
-
-  // PDF: bypass the iframe crossfade stack entirely — embed renders natively in the browser.
-  if (contentType === "pdf") {
-    return (
-      <div className="relative isolate h-full w-full overflow-hidden bg-canvas [contain:paint]">
-        <embed
-          src={`data:application/pdf;base64,${html}`}
-          type="application/pdf"
-          className="absolute inset-0 block h-full w-full border-0"
-          title={title}
-        />
-      </div>
-    );
-  }
 
   // When html changes, push a new background frame (ready=false).
   // The old frame(s) remain visible underneath until the new one fades in.
@@ -174,4 +177,16 @@ export default function PreviewIframe({ html, title = "Preview", contentType = "
       ))}
     </div>
   );
+}
+
+export default function PreviewIframe({
+  html,
+  title = "Preview",
+  contentType = "html",
+}: PreviewIframeProps) {
+  if (contentType === "pdf") {
+    return <PdfPreview html={html} title={title} />;
+  }
+
+  return <HtmlPreview html={html} title={title} contentType={contentType} />;
 }
