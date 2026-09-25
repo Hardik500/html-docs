@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { redirect } from "react-router";
 import type { Route } from "./+types/desktop.sync";
 import { newEditToken } from "~/lib/ids";
@@ -8,6 +9,11 @@ import type { PullResponse, PushResponse, SyncDocument, SyncTab } from "~/lib/sy
 function getBearerToken(request: Request): string {
   const value = request.headers.get("authorization") ?? "";
   return value.startsWith("Bearer ") ? value.slice(7).trim() : "";
+}
+
+function getAccountCursorKey(request: Request): string {
+  const token = getBearerToken(request);
+  return `cursor:${createHash("sha256").update(token).digest("hex")}`;
 }
 
 function getRemoteUrl(): string {
@@ -108,19 +114,21 @@ async function applyRemoteDocument(
 
   const editToken = remote.editToken || newEditToken();
   await runQuery(
-    `INSERT INTO docs (id, title, owner_user_id, edit_token, last_activity_at)
-     VALUES ($1, $2, $3, $4, now())
+    `INSERT INTO docs (id, title, owner_user_id, edit_token, revision, last_activity_at)
+     VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (id) DO UPDATE
        SET title = EXCLUDED.title,
            owner_user_id = EXCLUDED.owner_user_id,
            edit_token = EXCLUDED.edit_token,
            deleted_at = NULL,
+           revision = EXCLUDED.revision,
            last_activity_at = now()`,
     [
       remote.id,
       remote.title,
       "00000000-0000-0000-0000-000000000001",
       editToken,
+      remote.revision,
     ],
   );
   await runQuery("DELETE FROM tabs WHERE doc_id = $1", [remote.id]);
@@ -154,37 +162,73 @@ async function applyRemoteDocument(
 }
 
 async function pullFromCloud(request: Request) {
+  const cursorKey = getAccountCursorKey(request);
   const cursorResult = await query<{ value: string }>(
     "SELECT value FROM sync_meta WHERE key = $1",
-    ["cursor"],
+    [cursorKey],
   );
-  const cursor = Number(cursorResult.rows[0]?.value ?? 0);
-  const response = await remoteRequest(
-    request,
-    `/sync/pull?cursor=${encodeURIComponent(String(cursor))}`,
-  );
-  if (!response.ok) {
-    throw new Response(await response.text(), { status: response.status });
-  }
-  const payload = (await response.json()) as PullResponse;
+  let cursor = Number(cursorResult.rows[0]?.value ?? 0);
+  let applied = 0;
+  const conflicts: string[] = [];
+  let hasMore = false;
+  let partial = false;
 
-  const result = await withTransaction(async (runQuery) => {
-    let applied = 0;
-    const conflicts: string[] = [];
-    for (const document of payload.documents) {
-      const outcome = await applyRemoteDocument(runQuery, document);
-      if (outcome === "conflict") conflicts.push(document.id);
-      else applied += 1;
+  for (let page = 0; page < 50; page += 1) {
+    let maxDocuments = 20;
+    let response: Response;
+    while (true) {
+      response = await remoteRequest(
+        request,
+        `/sync/pull?cursor=${encodeURIComponent(String(cursor))}&max_documents=${maxDocuments}`,
+      );
+      if (response.status !== 413 || maxDocuments === 1) break;
+      maxDocuments = 1;
     }
-    await runQuery(
-      `INSERT INTO sync_meta (key, value) VALUES ('cursor', $1)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [String(payload.cursor)],
-    );
-    return { applied, conflicts, cursor: payload.cursor, hasMore: payload.hasMore };
-  });
+    if (!response.ok) {
+      throw new Response(await response.text(), { status: response.status });
+    }
 
-  return Response.json({ ok: true, mode: "pull", ...result });
+    const payload = (await response.json()) as PullResponse;
+    const result = await withTransaction(async (runQuery) => {
+      let pageApplied = 0;
+      for (const document of payload.documents) {
+        const outcome = await applyRemoteDocument(runQuery, document);
+        if (outcome === "conflict") conflicts.push(document.id);
+        else pageApplied += 1;
+      }
+      await runQuery(
+        `INSERT INTO sync_meta (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [cursorKey, String(payload.cursor)],
+      );
+      return pageApplied;
+    });
+    applied += result;
+    cursor = payload.cursor;
+    hasMore = payload.hasMore;
+    if (!hasMore) {
+      return Response.json({
+        ok: true,
+        mode: "pull",
+        applied,
+        conflicts,
+        cursor,
+        hasMore: false,
+        partial: false,
+      });
+    }
+  }
+
+  partial = true;
+  return Response.json({
+    ok: true,
+    mode: "pull",
+    applied,
+    conflicts,
+    cursor,
+    hasMore,
+    partial,
+  });
 }
 
 async function pushToCloud(request: Request) {

@@ -99,7 +99,7 @@ The database user must be able to reference Supabase's `auth.users` table.
 node --env-file=.env db/migrate.js
 ```
 
-Migrations are tracked in `schema_migrations` and are safe to run more than once. The migration command currently applies `db/migrations/*.sql` through `0007`; add future migrations to the list in `db/migrate.js`.
+Migrations are tracked in `schema_migrations` and are safe to run more than once. The migration command currently applies `db/migrations/*.sql` through `0008`; add future migrations to the list in `db/migrate.js`.
 
 ### 4. Start the app
 
@@ -120,6 +120,7 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm run typecheck` | Generate React Router types and run TypeScript |
 | `npm run desktop:dev` | Build the web app and launch the Electron desktop client |
 | `npm run desktop:dist` | Build the desktop installer for the current platform |
+| `npm run desktop:verify` | Verify the packaged Electron archive and runtime configuration |
 
 ## Desktop app
 

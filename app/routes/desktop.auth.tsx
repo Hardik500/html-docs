@@ -15,6 +15,7 @@ function getClientIp(request: Request): string {
 const ERROR_MESSAGES: Record<string, string> = {
   missing_code: "That sign-in link is incomplete. Please request a new one.",
   invalid_link: "That sign-in link is invalid or has expired. Please request a new one.",
+  invalid_state: "That desktop sign-in request is invalid or has expired. Please try again.",
 };
 
 export const meta: Route.MetaFunction = () => [
@@ -22,13 +23,22 @@ export const meta: Route.MetaFunction = () => [
 ];
 
 export function loader({ request }: Route.LoaderArgs) {
-  const errorCode = new URL(request.url).searchParams.get("error");
-  return { error: ERROR_MESSAGES[errorCode ?? ""] ?? null };
+  const url = new URL(request.url);
+  const errorCode = url.searchParams.get("error");
+  const state = url.searchParams.get("state") ?? "";
+  if (state && !/^[A-Za-z0-9_-]{32,200}$/.test(state)) {
+    return { error: "Invalid desktop sign-in state.", state: "" };
+  }
+  return { error: ERROR_MESSAGES[errorCode ?? ""] ?? null, state };
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const state = String(formData.get("state") ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(state)) {
+    return { error: "Invalid or expired desktop sign-in state." };
+  }
 
   const parsed = z.string().email().safeParse(email);
   if (!parsed.success) return { error: "Invalid email address." };
@@ -49,11 +59,13 @@ export async function action({ request }: Route.ActionArgs) {
     /\/+$/,
     ""
   );
+  const callbackUrl = new URL(`${appUrl}/desktop/auth/callback`);
+  callbackUrl.searchParams.set("state", state);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${appUrl}/desktop/auth/callback`,
+      emailRedirectTo: callbackUrl.toString(),
       shouldCreateUser: true,
     },
   });
@@ -71,7 +83,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function DesktopAuthPage() {
   const actionData = useActionData<typeof action>();
-  const { error: urlError } = useLoaderData<typeof loader>();
+  const { error: urlError, state } = useLoaderData<typeof loader>();
   const actionError =
     actionData && "error" in actionData ? actionData.error : undefined;
   const errorMessage = actionError ?? urlError;
@@ -107,6 +119,7 @@ export default function DesktopAuthPage() {
           </div>
         ) : (
           <Form method="post" className="space-y-4">
+            <input type="hidden" name="state" value={state} />
             {errorMessage && (
               <div
                 className="rounded-lg p-3 text-sm border"

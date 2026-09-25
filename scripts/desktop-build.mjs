@@ -26,6 +26,10 @@ if (existsSync(envPath)) {
 }
 
 const remoteUrl = (env.HTML_DOCS_REMOTE_URL || env.APP_URL || "").replace(/\/+$/, "");
+if (env.DESKTOP_REQUIRE_REMOTE_URL === "1" && !remoteUrl) {
+  console.error("HTML_DOCS_REMOTE_URL is required for this desktop build.");
+  process.exit(1);
+}
 const configPath = resolve(root, "electron", "runtime-config.json");
 mkdirSync(dirname(configPath), { recursive: true });
 writeFileSync(

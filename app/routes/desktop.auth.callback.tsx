@@ -2,14 +2,13 @@ import { randomBytes } from "node:crypto";
 import { redirect } from "react-router";
 import type { Route } from "./+types/desktop.auth.callback";
 import { query } from "~/lib/db.server";
-import { hashDesktopToken } from "~/lib/auth.server";
+import { hashDesktopAuthCode } from "~/lib/auth.server";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
-
-const DESKTOP_SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state") ?? "";
   const responseHeaders = new Headers({ "Cache-Control": "no-store" });
 
   const supabaseError = url.searchParams.get("error");
@@ -28,6 +27,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
+  if (!/^[A-Za-z0-9_-]{32,200}$/.test(state)) {
+    return redirect("/desktop/auth?error=invalid_state", {
+      headers: responseHeaders,
+    });
+  }
+
   const { supabase } = createSupabaseServerClient(request, responseHeaders);
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
   const user = data?.user;
@@ -42,17 +47,17 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  const token = `dhd_${randomBytes(32).toString("base64url")}`;
-  const expiresAt = new Date(Date.now() + DESKTOP_SESSION_TTL_MS);
+  const authorizationCode = `dac_${randomBytes(32).toString("base64url")}`;
+  const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
   await query(
-    `INSERT INTO desktop_sessions (user_id, token_hash, expires_at)
-     VALUES ($1, $2, $3)`,
-    [user.id, hashDesktopToken(token), expiresAt.toISOString()],
+    `INSERT INTO desktop_auth_codes (code_hash, state, user_id, expires_at)
+     VALUES ($1, $2, $3, $4)`,
+    [hashDesktopAuthCode(authorizationCode), state, user.id, expiresAt.toISOString()],
   );
 
   return redirect(
-    `html-docs://auth/callback?token=${encodeURIComponent(token)}`,
-    { headers: responseHeaders }
+    `html-docs://auth/callback?code=${encodeURIComponent(authorizationCode)}&state=${encodeURIComponent(state)}`,
+    { headers: responseHeaders },
   );
 }
 

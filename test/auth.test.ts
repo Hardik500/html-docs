@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   createSupabaseServerClient: vi.fn(),
   query: vi.fn(),
+  withTransaction: vi.fn(),
   getUser: vi.fn(),
   getClaims: vi.fn(),
   exchangeCodeForSession: vi.fn(),
 }));
 
-vi.mock("~/lib/db.server", () => ({ query: mocks.query }));
+vi.mock("~/lib/db.server", () => ({
+  query: mocks.query,
+  withTransaction: mocks.withTransaction,
+}));
 vi.mock("~/lib/supabase.server", () => ({
   createSupabaseServerClient: mocks.createSupabaseServerClient,
 }));
@@ -17,8 +21,9 @@ vi.mock("~/lib/runtime.server", () => ({
   LOCAL_USER_ID: "00000000-0000-0000-0000-000000000001",
 }));
 
-import { getUser, hashDesktopToken } from "~/lib/auth.server";
+import { getUser, hashDesktopAuthCode, hashDesktopToken } from "~/lib/auth.server";
 import { loader as desktopAuthCallback } from "~/routes/desktop.auth.callback";
+import { action as exchangeDesktopAuth } from "~/routes/desktop.auth.exchange";
 
 const supabase = {
   auth: {
@@ -38,6 +43,9 @@ describe("desktop authentication", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createSupabaseServerClient.mockReturnValue({ supabase });
+    mocks.withTransaction.mockImplementation(async (callback) =>
+      callback(mocks.query),
+    );
   });
 
   it("hashes desktop bearer tokens deterministically", () => {
@@ -76,7 +84,8 @@ describe("desktop authentication", () => {
     expect(mocks.getUser).not.toHaveBeenCalled();
   });
 
-  it("exchanges a PKCE code and returns a new opaque desktop token", async () => {
+  it("exchanges a PKCE code and returns a one-time desktop authorization code", async () => {
+    const state = `state_${"a".repeat(32)}`;
     mocks.exchangeCodeForSession.mockResolvedValue({
       data: { user: { id: "desktop-user", email: "person@example.com" } },
       error: null,
@@ -85,29 +94,54 @@ describe("desktop authentication", () => {
 
     const response = await desktopAuthCallback({
       request: new Request(
-        "https://html-docs.example/desktop/auth/callback?code=pkce-code",
+        `https://html-docs.example/desktop/auth/callback?code=pkce-code&state=${state}`,
       ),
       params: {},
       context: {},
       url: new URL(
-        "https://html-docs.example/desktop/auth/callback?code=pkce-code"
+        `https://html-docs.example/desktop/auth/callback?code=pkce-code&state=${state}`
       ),
       pattern: "/desktop/auth/callback",
     } as Parameters<typeof desktopAuthCallback>[0]);
 
     expect(response.status).toBe(302);
     const location = response.headers.get("Location");
-    expect(location).toMatch(/^html-docs:\/\/auth\/callback\?token=dhd_/);
-    const token = new URL(location!).searchParams.get("token")!;
-    expect(token).toMatch(/^dhd_[A-Za-z0-9_-]{43}$/);
+    expect(location).toMatch(/^html-docs:\/\/auth\/callback\?code=dac_/);
+    const code = new URL(location!).searchParams.get("code")!;
+    expect(new URL(location!).searchParams.get("state")).toBe(state);
+    expect(code).toMatch(/^dac_[A-Za-z0-9_-]{43}$/);
     expect(mocks.exchangeCodeForSession).toHaveBeenCalledWith("pkce-code");
     expect(mocks.query).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO desktop_sessions"),
+      expect.stringContaining("INSERT INTO desktop_auth_codes"),
       [
+        hashDesktopAuthCode(code),
+        state,
         "desktop-user",
-        hashDesktopToken(token),
         expect.any(String),
       ],
+    );
+  });
+
+  it("redeems a one-time code and returns a reusable desktop session", async () => {
+    const state = `state_${"b".repeat(32)}`;
+    const code = `dac_${"c".repeat(43)}`;
+    mocks.query.mockResolvedValueOnce({ rows: [{ user_id: "desktop-user" }] });
+
+    const response = await exchangeDesktopAuth({
+      request: new Request("https://html-docs.example/desktop/auth/exchange", {
+        method: "POST",
+        body: JSON.stringify({ code, state }),
+      }),
+      params: {},
+      context: {},
+    } as unknown as Parameters<typeof exchangeDesktopAuth>[0]);
+
+    expect(response.status).toBe(200);
+    const payload = await response.json() as { token: string };
+    expect(payload.token).toMatch(/^dhd_[A-Za-z0-9_-]{43}$/);
+    expect(mocks.query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO desktop_sessions"),
+      ["desktop-user", hashDesktopToken(payload.token), expect.any(String)],
     );
   });
 

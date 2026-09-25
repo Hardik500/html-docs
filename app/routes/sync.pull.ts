@@ -30,6 +30,10 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const url = new URL(request.url);
   const cursor = parseSyncCursor(url.searchParams.get("cursor"));
+  const requestedMax = Number(url.searchParams.get("max_documents") ?? MAX_DOCUMENTS_PER_PAGE);
+  const maxDocuments = Number.isInteger(requestedMax)
+    ? Math.max(1, Math.min(MAX_DOCUMENTS_PER_PAGE, requestedMax))
+    : MAX_DOCUMENTS_PER_PAGE;
   const changes = await query<ChangeRow>(
     `SELECT seq, doc_id
        FROM sync_changes
@@ -56,7 +60,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   let consumedChanges = 0;
   for (const change of page) {
     if (!seenDocIds.has(change.doc_id)) {
-      if (docIds.length >= MAX_DOCUMENTS_PER_PAGE) break;
+      if (docIds.length >= maxDocuments) break;
       seenDocIds.add(change.doc_id);
       docIds.push(change.doc_id);
     }

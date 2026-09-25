@@ -12,6 +12,7 @@
     "start": "react-router-serve ./build/server/index.js",
     "desktop:dev": "npm run build && electron electron/main.cjs --dev",
     "desktop:dist": "node scripts/desktop-build.mjs",
+    "desktop:verify": "node scripts/verify-desktop-package.mjs",
     "test": "vitest run",
     "typecheck": "react-router typegen && tsc"
   },
@@ -48,6 +49,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electron/asar": "^4.3.0",
     "@react-router/dev": "7.15.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/node": "^22",

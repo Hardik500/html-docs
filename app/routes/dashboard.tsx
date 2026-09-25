@@ -111,7 +111,9 @@ export default function Dashboard() {
         ? `${syncStatus.conflicts} conflict${syncStatus.conflicts === 1 ? "" : "s"}`
         : syncStatus.state === "synced"
           ? "Synced"
-          : syncStatus.state === "error"
+          : syncStatus.state === "partial"
+            ? "More to sync"
+            : syncStatus.state === "error"
             ? "Sync error"
             : "Sign in to sync";
 

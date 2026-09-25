@@ -1,8 +1,10 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { randomBytes } = require("node:crypto");
 const { shell } = require("electron");
 
 const SESSION_FILE = "desktop-sync-session.bin";
+const REVOCATION_FILE = "desktop-pending-revocations.bin";
 const SYNC_INTERVAL_MS = 30_000;
 
 function normalizeRemoteUrl(value) {
@@ -18,7 +20,10 @@ function createSyncManager({
 }) {
   const normalizedRemoteUrl = normalizeRemoteUrl(remoteUrl);
   const sessionPath = path.join(app.getPath("userData"), SESSION_FILE);
+  const revocationPath = path.join(app.getPath("userData"), REVOCATION_FILE);
   let token = null;
+  let pendingRevocations = [];
+  let pendingAuthState = null;
   let syncTimer = null;
   let syncing = false;
   let status = {
@@ -52,6 +57,56 @@ function createSyncManager({
     broadcast();
   }
 
+  async function loadPendingRevocations() {
+    if (!safeStorage.isEncryptionAvailable()) return;
+    try {
+      const encrypted = await fs.readFile(revocationPath);
+      const parsed = JSON.parse(safeStorage.decryptString(encrypted));
+      if (Array.isArray(parsed)) {
+        pendingRevocations = parsed.filter(
+          (value) => typeof value === "string" && value.startsWith("dhd_"),
+        );
+      }
+    } catch {
+      pendingRevocations = [];
+    }
+  }
+
+  async function persistPendingRevocations() {
+    if (!safeStorage.isEncryptionAvailable()) return;
+    if (pendingRevocations.length === 0) {
+      await fs.rm(revocationPath, { force: true });
+      return;
+    }
+    await fs.writeFile(
+      revocationPath,
+      safeStorage.encryptString(JSON.stringify(pendingRevocations)),
+    );
+  }
+
+  async function revokeRemoteToken(value) {
+    if (!normalizedRemoteUrl) return true;
+    try {
+      const response = await fetch(`${normalizedRemoteUrl}/desktop/auth/revoke`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${value}` },
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function retryPendingRevocations() {
+    if (!pendingRevocations.length) return;
+    const remaining = [];
+    for (const value of pendingRevocations) {
+      if (!(await revokeRemoteToken(value))) remaining.push(value);
+    }
+    pendingRevocations = remaining;
+    await persistPendingRevocations();
+  }
+
   async function loadToken() {
     if (!safeStorage.isEncryptionAvailable()) return;
     try {
@@ -60,7 +115,14 @@ function createSyncManager({
     } catch {
       token = null;
     }
-    if (token) setStatus({ state: "signed_in", message: "Ready to sync." });
+    if (token) {
+      setStatus({
+        state: "signed_in",
+        message: safeStorage.isEncryptionAvailable()
+          ? "Ready to sync."
+          : "Signed in for this session only; OS secure storage is unavailable.",
+      });
+    }
   }
 
   async function saveToken(nextToken) {
@@ -69,18 +131,27 @@ function createSyncManager({
       await fs.mkdir(path.dirname(sessionPath), { recursive: true });
       await fs.writeFile(sessionPath, safeStorage.encryptString(token));
     }
-    setStatus({ state: "signed_in", message: "Signed in. Syncing shortly." });
+    setStatus({
+      state: "signed_in",
+      message: safeStorage.isEncryptionAvailable()
+        ? "Signed in. Syncing shortly."
+        : "Signed in for this session only; OS secure storage is unavailable.",
+    });
   }
 
   async function clearToken() {
+    pendingAuthState = null;
+    let revocationPending = false;
     if (token && normalizedRemoteUrl) {
-      try {
-        await fetch(`${normalizedRemoteUrl}/desktop/auth/revoke`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {
-        // Local sign-out must still work while offline.
+      const revoked = await revokeRemoteToken(token);
+      if (!revoked) {
+        revocationPending = true;
+        if (!pendingRevocations.includes(token)) pendingRevocations.push(token);
+        try {
+          await persistPendingRevocations();
+        } catch {
+          // If secure storage is unavailable, the status below remains explicit.
+        }
       }
     }
     token = null;
@@ -93,7 +164,11 @@ function createSyncManager({
       state: "signed_out",
       pending: 0,
       conflicts: 0,
-      message: "Sign in to sync this device.",
+      message: revocationPending
+        ? safeStorage.isEncryptionAvailable()
+          ? "Signed out locally; cloud sign-out will retry when online."
+          : "Signed out locally; cloud sign-out could not be completed."
+        : "Sign in to sync this device.",
     });
   }
 
@@ -109,7 +184,10 @@ function createSyncManager({
       setStatus({ state: "error", message });
       throw new Error(message);
     }
-    await shell.openExternal(authUrl(email));
+    pendingAuthState = randomBytes(32).toString("base64url");
+    const url = new URL(authUrl(email));
+    url.searchParams.set("state", pendingAuthState);
+    await shell.openExternal(url.toString());
     setStatus({ state: "awaiting_auth", message: "Check your browser to continue sign-in." });
   }
 
@@ -143,6 +221,7 @@ function createSyncManager({
 
   async function syncNow() {
     if (!token) {
+      await retryPendingRevocations();
       setStatus({ state: "signed_out" });
       return;
     }
@@ -158,14 +237,17 @@ function createSyncManager({
       const push = await parseSyncResponse(await callLocal("push"));
       const pull = await parseSyncResponse(await callLocal("pull"));
       const conflicts = [...(push.conflicts ?? []), ...(pull.conflicts ?? [])];
+      const partial = Boolean(pull.partial);
       setStatus({
-        state: conflicts.length ? "conflict" : "synced",
+        state: conflicts.length ? "conflict" : partial ? "partial" : "synced",
         pending: 0,
         conflicts: conflicts.length,
         lastSyncedAt: new Date().toISOString(),
         message: conflicts.length
           ? `${conflicts.length} document${conflicts.length === 1 ? "" : "s"} need review.`
-          : "All local documents are synced.",
+          : partial
+            ? "More changes are waiting; sync will continue shortly."
+            : "All local documents are synced.",
       });
     } catch (error) {
       if (error.status === 401) {
@@ -181,6 +263,24 @@ function createSyncManager({
     }
   }
 
+  async function redeemAuthorizationCode(code, state) {
+    if (!pendingAuthState || state !== pendingAuthState) {
+      throw new Error("Desktop sign-in state did not match.");
+    }
+    pendingAuthState = null;
+    const response = await fetch(`${normalizedRemoteUrl}/desktop/auth/exchange`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, state }),
+    });
+    const payload = await parseSyncResponse(response);
+    if (!payload.token || !String(payload.token).startsWith("dhd_")) {
+      throw new Error("Desktop sign-in response was invalid.");
+    }
+    await saveToken(String(payload.token));
+    await syncNow();
+  }
+
   function handleProtocolUrl(value) {
     try {
       const url = new URL(value);
@@ -191,22 +291,31 @@ function createSyncManager({
         setStatus({ state: "error", message: error });
         return true;
       }
-      const nextToken = url.searchParams.get("token");
-      if (!nextToken || !nextToken.startsWith("dhd_")) {
+      const code = url.searchParams.get("code");
+      const state = url.searchParams.get("state") || "";
+      if (!code || !/^dac_[A-Za-z0-9_-]{43}$/.test(code)) {
         setStatus({ state: "error", message: "The desktop sign-in response was invalid." });
         return true;
       }
-      void saveToken(nextToken).then(() => syncNow());
+      void redeemAuthorizationCode(code, state).catch((error) => {
+        setStatus({
+          state: "error",
+          message: error instanceof Error ? error.message : "Desktop sign-in failed.",
+        });
+      });
       return true;
     } catch {
       return false;
     }
   }
 
-  function start() {
-    void loadToken().then(() => syncNow());
+  async function start() {
+    await loadPendingRevocations();
+    await loadToken();
+    await retryPendingRevocations();
     if (syncTimer) clearInterval(syncTimer);
     syncTimer = setInterval(() => void syncNow(), SYNC_INTERVAL_MS);
+    await syncNow();
   }
 
   function stop() {

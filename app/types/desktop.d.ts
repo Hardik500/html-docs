@@ -1,5 +1,5 @@
 interface DesktopSyncStatus {
-  state: "signed_out" | "awaiting_auth" | "signed_in" | "syncing" | "synced" | "conflict" | "error";
+  state: "signed_out" | "awaiting_auth" | "signed_in" | "syncing" | "synced" | "partial" | "conflict" | "error";
   pending: number;
   conflicts: number;
   lastSyncedAt: string | null;

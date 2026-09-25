@@ -21,6 +21,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      HTML_DOCS_REMOTE_URL: ${{ vars.HTML_DOCS_REMOTE_URL }}
+      DESKTOP_REQUIRE_REMOTE_URL: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -31,6 +34,7 @@ jobs:
       - run: npm test
       - run: npm run typecheck
       - run: npm run desktop:dist
+      - run: npm run desktop:verify
       - uses: actions/upload-artifact@v4
         with:
           name: html-docs-${{ matrix.os }}

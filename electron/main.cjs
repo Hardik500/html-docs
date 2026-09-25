@@ -18,6 +18,7 @@ const { createSyncManager } = require("./sync-manager.cjs");
 let mainWindow = null;
 let localServer = null;
 let syncManager = null;
+let syncManagerReady = false;
 let localContext = null;
 let pendingProtocolUrl = null;
 let closingLocalServer = false;
@@ -250,7 +251,8 @@ async function launch() {
     getLocalContext: () => localContext,
     remoteUrl: process.env.HTML_DOCS_SYNC_URL || "",
   });
-  syncManager.start();
+  await syncManager.start();
+  syncManagerReady = true;
   if (pendingProtocolUrl) {
     syncManager.handleProtocolUrl(pendingProtocolUrl);
     pendingProtocolUrl = null;
@@ -263,13 +265,16 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("open-url", (event, url) => {
     event.preventDefault();
-    if (syncManager) syncManager.handleProtocolUrl(url);
+    if (syncManager && syncManagerReady) syncManager.handleProtocolUrl(url);
     else pendingProtocolUrl = url;
   });
 
   app.on("second-instance", (_event, argv) => {
     const protocolUrl = argv.find((value) => value.startsWith("html-docs://"));
-    if (protocolUrl && syncManager) syncManager.handleProtocolUrl(protocolUrl);
+    if (protocolUrl) {
+      if (syncManager && syncManagerReady) syncManager.handleProtocolUrl(protocolUrl);
+      else pendingProtocolUrl = protocolUrl;
+    }
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();

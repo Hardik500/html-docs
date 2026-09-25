@@ -8,6 +8,10 @@ export function hashDesktopToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+export function hashDesktopAuthCode(code: string): string {
+  return createHash("sha256").update(code).digest("hex");
+}
+
 export async function getUser(
   request: Request
 ): Promise<{ id: string; email: string } | null> {

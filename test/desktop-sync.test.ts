@@ -83,4 +83,51 @@ describe("desktop sync bridge", () => {
       { remote_revision: 4, dirty: false, force_push: false },
     ]);
   });
+
+  it("applies pulled revisions to the local editor revision", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            cursor: 5,
+            hasMore: false,
+            documents: [
+              {
+                id: "sync-doc",
+                title: "Synced document",
+                revision: 7,
+                deleted: false,
+                editToken: "remote-token",
+                tabs: [
+                  {
+                    id: "sync-tab",
+                    slug: "tab-1",
+                    name: "Tab 1",
+                    position: 0,
+                    html: "<h1>Pulled</h1>",
+                    content_type: "html",
+                  },
+                ],
+              },
+            ],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      ),
+    );
+
+    const response = await desktopSync({
+      request: request("pull"),
+      params: {},
+      context: undefined,
+    } as unknown as Parameters<typeof desktopSync>[0]);
+
+    expect(response.status).toBe(200);
+    const doc = await query<{ revision: string | number; title: string }>(
+      "SELECT revision, title FROM docs WHERE id = $1",
+      ["sync-doc"],
+    );
+    expect(doc.rows).toEqual([{ revision: 7, title: "Synced document" }]);
+  });
 });

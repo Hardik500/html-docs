@@ -38,6 +38,7 @@ const migrations = [
   "0005_markdown_support.sql",
   "0006_sync.sql",
   "0007_desktop_sessions.sql",
+  "0008_desktop_auth_codes.sql",
 ];
 for (const file of migrations) {
   if (appliedSet.has(file)) {
