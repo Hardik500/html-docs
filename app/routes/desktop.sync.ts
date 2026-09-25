@@ -161,6 +161,8 @@ async function applyRemoteDocument(
      ON CONFLICT (doc_id) DO UPDATE
        SET remote_revision = EXCLUDED.remote_revision,
            dirty = FALSE,
+           force_push = FALSE,
+           force_revision = NULL,
            deleted = FALSE,
            last_synced_at = now(),
            last_error = NULL`,
@@ -247,10 +249,11 @@ async function pushToCloud(request: Request) {
     remote_revision: string | number;
     deleted: boolean;
     force_push: boolean;
+    force_revision: string | number | null;
     change_generation: string | number;
   }>(
     `SELECT d.id, d.title, d.deleted_at, s.remote_revision, s.deleted, s.force_push,
-            s.change_generation
+            s.force_revision, s.change_generation
        FROM docs d
        JOIN sync_state s ON s.doc_id = d.id
       WHERE s.dirty = TRUE
@@ -279,7 +282,10 @@ async function pushToCloud(request: Request) {
       title: row.title,
       baseRevision: Number(row.remote_revision),
       deleted: row.deleted || Boolean(row.deleted_at),
-      force: row.force_push,
+      force: row.force_push && row.force_revision !== null,
+      ...(row.force_push && row.force_revision !== null
+        ? { forceRevision: Number(row.force_revision) }
+        : {}),
       tabs: tabs.rows.map((tab) => ({
         id: tab.id,
         slug: tab.slug,
@@ -304,7 +310,7 @@ async function pushToCloud(request: Request) {
     const result = (await response.json()) as PushResponse;
     await query(
       `UPDATE sync_state
-          SET remote_revision = $1, dirty = FALSE, force_push = FALSE, deleted = $2,
+          SET remote_revision = $1, dirty = FALSE, force_push = FALSE, force_revision = NULL, deleted = $2,
               last_synced_at = now(), last_error = NULL
         WHERE doc_id = $3 AND change_generation = $4`,
       [result.revision, result.deleted, row.id, row.change_generation],
@@ -336,7 +342,7 @@ async function resolveConflict(request: Request) {
     if (choice === "remote") {
       await runQuery(
         `UPDATE sync_state
-            SET dirty = FALSE, force_push = FALSE, last_error = NULL
+            SET dirty = FALSE, force_push = FALSE, force_revision = NULL, last_error = NULL
           WHERE doc_id = $1`,
         [docId],
       );
@@ -345,9 +351,9 @@ async function resolveConflict(request: Request) {
     } else {
       await runQuery(
         `UPDATE sync_state
-            SET dirty = TRUE, force_push = TRUE, last_error = NULL
+            SET dirty = TRUE, force_push = TRUE, force_revision = $2, last_error = NULL
           WHERE doc_id = $1`,
-        [docId],
+        [docId, remote.revision],
       );
       await runQuery("DELETE FROM sync_conflicts WHERE doc_id = $1", [docId]);
     }

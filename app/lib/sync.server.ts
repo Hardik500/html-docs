@@ -32,6 +32,7 @@ export interface PushRequest {
     baseRevision: number;
     deleted?: boolean;
     force?: boolean;
+    forceRevision?: number;
     tabs: SyncTab[];
   };
 }

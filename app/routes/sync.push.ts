@@ -62,7 +62,7 @@ function contentType(value: unknown): TabContentType {
     : "html";
 }
 
-function validateDocument(body: unknown): PushRequest["document"] {
+export function validateDocument(body: unknown): PushRequest["document"] {
   if (!body || typeof body !== "object") {
     throw new Response("Invalid sync document", { status: 400 });
   }
@@ -76,6 +76,9 @@ function validateDocument(body: unknown): PushRequest["document"] {
   const id = typeof value.id === "string" ? value.id : "";
   const title = typeof value.title === "string" ? value.title.trim() : "";
   const baseRevision = Number(value.baseRevision);
+  const force = value.force === true;
+  const forceRevision =
+    value.forceRevision === undefined ? undefined : Number(value.forceRevision);
   const tabs = Array.isArray(value.tabs) ? value.tabs : [];
 
   if (!/^[a-zA-Z0-9_-]{1,64}$/.test(id)) {
@@ -86,6 +89,18 @@ function validateDocument(body: unknown): PushRequest["document"] {
   }
   if (!Number.isSafeInteger(baseRevision) || baseRevision < 0) {
     throw new Response("Invalid base revision", { status: 400 });
+  }
+  if (
+    value.forceRevision !== undefined &&
+    (!Number.isSafeInteger(forceRevision) || (forceRevision ?? -1) < 0)
+  ) {
+    throw new Response("Invalid force revision", { status: 400 });
+  }
+  if (force && forceRevision === undefined) {
+    throw new Response("forceRevision is required for a force push", { status: 400 });
+  }
+  if (!force && value.forceRevision !== undefined) {
+    throw new Response("forceRevision requires force", { status: 400 });
   }
   if (tabs.length > MAX_TABS) {
     throw new Response("Too many tabs", { status: 400 });
@@ -135,7 +150,8 @@ function validateDocument(body: unknown): PushRequest["document"] {
     title,
     baseRevision,
     deleted: value.deleted === true,
-    force: value.force === true,
+    force,
+    ...(forceRevision === undefined ? {} : { forceRevision }),
     tabs: normalizedTabs,
   };
 }
@@ -154,7 +170,7 @@ async function writeDocument(
   );
 
   if (!existing.rows.length) {
-    if (document.baseRevision !== 0 || document.deleted) {
+    if (document.force || document.baseRevision !== 0 || document.deleted) {
       return { kind: "not-found" };
     }
 
@@ -194,7 +210,10 @@ async function writeDocument(
   if (current.owner_user_id !== userId) return { kind: "forbidden" };
 
   const remoteRevision = Number(current.revision);
-  if (!document.force && remoteRevision !== document.baseRevision) {
+  if (
+    (document.force && remoteRevision !== document.forceRevision) ||
+    (!document.force && remoteRevision !== document.baseRevision)
+  ) {
     return { kind: "conflict", remoteRevision };
   }
 
