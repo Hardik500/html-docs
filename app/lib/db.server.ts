@@ -29,7 +29,9 @@ export function getPostgresSslOptions(url: string) {
     rejectUnauthorized: true,
   };
   const caPath = process.env.DATABASE_CA_CERT_PATH;
-  if (caPath) ssl.ca = readFileSync(caPath, "utf8");
+  const caCert = process.env.DATABASE_CA_CERT;
+  if (caCert) ssl.ca = caCert.replace(/\\n/g, "\n");
+  else if (caPath) ssl.ca = readFileSync(caPath, "utf8");
   return ssl;
 }
 

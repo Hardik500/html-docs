@@ -5,11 +5,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getPostgresSslOptions } from "~/lib/db.server";
 
 const previousCaPath = process.env.DATABASE_CA_CERT_PATH;
+const previousCaCert = process.env.DATABASE_CA_CERT;
 let tempDir: string | undefined;
 
 afterEach(async () => {
   if (previousCaPath === undefined) delete process.env.DATABASE_CA_CERT_PATH;
   else process.env.DATABASE_CA_CERT_PATH = previousCaPath;
+  if (previousCaCert === undefined) delete process.env.DATABASE_CA_CERT;
+  else process.env.DATABASE_CA_CERT = previousCaCert;
   if (tempDir) await rm(tempDir, { recursive: true, force: true });
   tempDir = undefined;
 });
@@ -23,6 +26,15 @@ describe("PostgreSQL TLS options", () => {
   it("requires certificate verification for remote database URLs", () => {
     expect(getPostgresSslOptions("postgres://db.example.test/html_docs")).toEqual({
       rejectUnauthorized: true,
+    });
+  });
+
+  it("accepts an inline CA certificate", () => {
+    const escaped = "-----BEGIN CERTIFICATE-----\\ntest\\n-----END CERTIFICATE-----";
+    process.env.DATABASE_CA_CERT = escaped;
+    expect(getPostgresSslOptions("postgres://db.example.test/html_docs")).toEqual({
+      rejectUnauthorized: true,
+      ca: escaped.replace(/\\n/g, "\n"),
     });
   });
 
