@@ -5,7 +5,7 @@
  * database is local to the machine, has no Supabase auth schema, and must be
  * initialised before the local React Router server starts serving requests.
  */
-export const LOCAL_SCHEMA_VERSION = 3;
+export const LOCAL_SCHEMA_VERSION = 4;
 
 export const LOCAL_SCHEMA = `
 CREATE TABLE IF NOT EXISTS docs (
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS sync_state (
   remote_revision BIGINT NOT NULL DEFAULT 0,
   dirty BOOLEAN NOT NULL DEFAULT FALSE,
   force_push BOOLEAN NOT NULL DEFAULT FALSE,
+  change_generation BIGINT NOT NULL DEFAULT 0,
   deleted BOOLEAN NOT NULL DEFAULT FALSE,
   last_synced_at TIMESTAMPTZ,
   last_error TEXT
@@ -95,6 +96,13 @@ export const LOCAL_MIGRATIONS = [
     sql: `
       ALTER TABLE sync_state
         ADD COLUMN IF NOT EXISTS force_push BOOLEAN NOT NULL DEFAULT FALSE;
+    `,
+  },
+  {
+    version: 4,
+    sql: `
+      ALTER TABLE sync_state
+        ADD COLUMN IF NOT EXISTS change_generation BIGINT NOT NULL DEFAULT 0;
     `,
   },
 ];

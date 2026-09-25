@@ -93,11 +93,12 @@ export async function markLocalDocumentDirty(
   if (!isDesktopRuntime()) return;
 
   await runQuery(
-    `INSERT INTO sync_state (doc_id, dirty, deleted, last_error)
-     VALUES ($1, TRUE, $2, NULL)
+    `INSERT INTO sync_state (doc_id, dirty, deleted, change_generation, last_error)
+     VALUES ($1, TRUE, $2, 1, NULL)
      ON CONFLICT (doc_id) DO UPDATE
        SET dirty = TRUE,
            deleted = EXCLUDED.deleted,
+           change_generation = sync_state.change_generation + 1,
            last_error = NULL`,
     [docId, deleted],
   );

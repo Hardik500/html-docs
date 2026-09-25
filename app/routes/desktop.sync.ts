@@ -247,8 +247,10 @@ async function pushToCloud(request: Request) {
     remote_revision: string | number;
     deleted: boolean;
     force_push: boolean;
+    change_generation: string | number;
   }>(
-    `SELECT d.id, d.title, d.deleted_at, s.remote_revision, s.deleted, s.force_push
+    `SELECT d.id, d.title, d.deleted_at, s.remote_revision, s.deleted, s.force_push,
+            s.change_generation
        FROM docs d
        JOIN sync_state s ON s.doc_id = d.id
       WHERE s.dirty = TRUE
@@ -304,8 +306,8 @@ async function pushToCloud(request: Request) {
       `UPDATE sync_state
           SET remote_revision = $1, dirty = FALSE, force_push = FALSE, deleted = $2,
               last_synced_at = now(), last_error = NULL
-        WHERE doc_id = $3`,
-      [result.revision, result.deleted, row.id],
+        WHERE doc_id = $3 AND change_generation = $4`,
+      [result.revision, result.deleted, row.id, row.change_generation],
     );
     pushed += 1;
   }

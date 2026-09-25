@@ -84,6 +84,60 @@ describe("desktop sync bridge", () => {
     ]);
   });
 
+  it("keeps newer local edits dirty when a push completes", async () => {
+    await query(
+      "INSERT INTO docs (id, title, owner_user_id, edit_token) VALUES ($1, $2, $3, $4)",
+      ["racedoc", "Race document", "00000000-0000-0000-0000-000000000001", "race-token"],
+    );
+    await query(
+      "INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+      ["racetab", "racedoc", "tab-1", "Tab 1", 0, "<h1>Before</h1>", "html"],
+    );
+    await markLocalDocumentDirty("racedoc");
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        await query(
+          `UPDATE sync_state
+              SET dirty = TRUE, change_generation = change_generation + 1
+            WHERE doc_id = $1`,
+          ["racedoc"],
+        );
+        return new Response(
+          JSON.stringify({
+            id: "racedoc",
+            revision: 2,
+            deleted: false,
+            editToken: "remote-token",
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }),
+    );
+
+    const response = await desktopSync({
+      request: request("push"),
+      params: {},
+      context: undefined,
+    } as unknown as Parameters<typeof desktopSync>[0]);
+
+    expect(response.status).toBe(200);
+    const state = await query<{
+      remote_revision: string | number;
+      dirty: boolean;
+      change_generation: string | number;
+    }>(
+      "SELECT remote_revision, dirty, change_generation FROM sync_state WHERE doc_id = $1",
+      ["racedoc"],
+    );
+    expect(state.rows).toEqual([
+      { remote_revision: 0, dirty: true, change_generation: 2 },
+    ]);
+
+    await query("DELETE FROM docs WHERE id = $1", ["racedoc"]);
+  });
+
   it("applies pulled revisions to the local editor revision", async () => {
     vi.stubGlobal(
       "fetch",
