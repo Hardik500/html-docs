@@ -44,6 +44,20 @@ export async function createAgentToken(
   const cleanName = name.trim().slice(0, 100);
   if (!cleanName) throw new Response("Agent name is required", { status: 400 });
 
+  const active = await query<{ count: string | number }>(
+    `SELECT COUNT(*)::int AS count
+       FROM agent_access_tokens
+      WHERE user_id = $1
+        AND revoked_at IS NULL
+        AND (expires_at IS NULL OR expires_at > now())`,
+    [userId],
+  );
+  if (Number(active.rows[0]?.count ?? 0) >= 20) {
+    throw new Response("Agent token limit reached. Revoke an unused token first.", {
+      status: 409,
+    });
+  }
+
   const token = `hdo_${randomBytes(32).toString("base64url")}`;
   const tokenHash = hashAgentToken(token);
   const tokenPrefix = token.slice(0, 12);

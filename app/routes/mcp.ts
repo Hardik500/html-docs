@@ -13,10 +13,12 @@ import {
   getUserDocumentTab,
   listUserDocuments,
 } from "~/lib/document-service.server";
+import { checkMcpRate } from "~/lib/ratelimit.server";
 import { isDesktopRuntime } from "~/lib/runtime.server";
 
 const MCP_VERSION = "0.1.0";
 const MAX_REQUEST_BYTES = 1_000_000;
+const MAX_TOOL_OUTPUT_BYTES = 3_500_000;
 const DOCUMENT_ID_PATTERN = /^[a-zA-Z0-9_-]{1,64}$/;
 const TAB_SLUG_PATTERN = /^[a-zA-Z0-9_-]{1,200}$/;
 
@@ -33,15 +35,15 @@ function corsHeaders(request: Request): HeadersInit {
     : "*";
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, MCP-Protocol-Version, Last-Event-ID",
     "Access-Control-Expose-Headers": "Mcp-Session-Id",
+    "X-Content-Type-Options": "nosniff",
     Vary: "Origin",
   };
 }
 
 function unauthorized(request: Request): Response {
-  const resourceUrl = process.env.MCP_RESOURCE_URL || new URL("/mcp", request.url).toString();
   return Response.json(
     { error: "unauthorized", message: "A valid html-docs agent token is required." },
     {
@@ -49,15 +51,19 @@ function unauthorized(request: Request): Response {
       headers: {
         ...corsHeaders(request),
         "Cache-Control": "no-store",
-        "WWW-Authenticate": `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource", resourceUrl).toString()}"`,
+        "WWW-Authenticate": 'Bearer realm="html-docs"',
       },
     },
   );
 }
 
 function toolResult(value: Record<string, unknown>) {
+  const text = JSON.stringify(value, null, 2);
+  if (Buffer.byteLength(text, "utf8") > MAX_TOOL_OUTPUT_BYTES) {
+    return toolError("The result is too large for one MCP response. Use get_tab to read a smaller section.");
+  }
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
+    content: [{ type: "text" as const, text }],
     structuredContent: value,
   };
 }
@@ -137,7 +143,7 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
     async ({ query: search, limit, offset }) => {
       if (!hasScope(identity, "docs:read")) return toolError("Missing required scope: docs:read");
       const result = await listUserDocuments(identity.userId, { limit, offset, search });
-      audit("search_documents", null, "ok", { query: search, count: result.documents.length });
+      audit("search_documents", null, "ok", { count: result.documents.length });
       return toolResult(result as unknown as Record<string, unknown>);
     },
   );
@@ -194,6 +200,15 @@ async function handleMcpRequest(request: Request): Promise<Response> {
   if (isDesktopRuntime()) {
     throw new Response("Not found", { status: 404 });
   }
+  if (request.method !== "POST") {
+    return Response.json(
+      { error: "method_not_allowed", message: "The stateless MCP endpoint accepts POST requests." },
+      {
+        status: 405,
+        headers: { ...corsHeaders(request), Allow: "POST, OPTIONS", "Cache-Control": "no-store" },
+      },
+    );
+  }
 
   const authorization = request.headers.get("authorization") ?? "";
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7).trim() : "";
@@ -209,6 +224,28 @@ async function handleMcpRequest(request: Request): Promise<Response> {
     );
   }
   if (!identity) return unauthorized(request);
+
+  try {
+    const allowed = await checkMcpRate(identity.tokenId);
+    if (!allowed) {
+      return Response.json(
+        { error: "rate_limited", message: "Agent request limit exceeded. Try again shortly." },
+        {
+          status: 429,
+          headers: {
+            ...corsHeaders(request),
+            "Cache-Control": "no-store",
+            "Retry-After": "60",
+          },
+        },
+      );
+    }
+  } catch {
+    return Response.json(
+      { error: "rate_limit_unavailable", message: "MCP request limiting is temporarily unavailable." },
+      { status: 503, headers: { ...corsHeaders(request), "Cache-Control": "no-store" } },
+    );
+  }
 
   const server = createMcpServer(identity, request);
   const transport = new WebStandardStreamableHTTPServerTransport({
@@ -227,10 +264,12 @@ async function handleMcpRequest(request: Request): Promise<Response> {
       extra: { userId: identity.userId },
     },
   });
+  const body = await response.text();
+  await Promise.allSettled([server.close(), transport.close()]);
   const headers = new Headers(response.headers);
   for (const [key, value] of Object.entries(corsHeaders(request))) headers.set(key, value);
   headers.set("Cache-Control", "no-store");
-  return new Response(response.body, { status: response.status, headers });
+  return new Response(body, { status: response.status, headers });
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

@@ -78,6 +78,13 @@ export async function checkSyncPushRate(
   return checkAndIncrement(key, 30, new Date(Date.now() + 60_000));
 }
 
+/** 120 MCP tool calls per agent token per minute */
+export async function checkMcpRate(tokenId: string): Promise<boolean> {
+  if (isDesktopRuntime()) return true;
+  const key = `mcp:${tokenId}:${currentMinuteUtc()}`;
+  return checkAndIncrement(key, 120, new Date(Date.now() + 60_000));
+}
+
 /** 30 saves per doc per minute — prevents write-flood abuse of the auto-save endpoint */
 export async function checkSaveRate(docId: string): Promise<boolean> {
   if (isDesktopRuntime()) return true;
