@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import pg from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -19,24 +19,7 @@ function getPostgresSslOptions() {
   return ssl;
 }
 
-const pool = new pg.Pool({
-  connectionString: url || "postgres://localhost/html_docs_dev",
-  ssl: getPostgresSslOptions(),
-});
-
-// Ensure the tracking table exists
-await pool.query(`
-  CREATE TABLE IF NOT EXISTS schema_migrations (
-    filename TEXT PRIMARY KEY,
-    applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-  )
-`);
-
-// Load already-applied migrations
-const applied = await pool.query("SELECT filename FROM schema_migrations");
-const appliedSet = new Set(applied.rows.map((r) => r.filename));
-
-const migrations = [
+export const migrations = [
   "0001_init.sql",
   "0002_indexes_cleanup.sql",
   "0003_supabase_auth.sql",
@@ -46,16 +29,61 @@ const migrations = [
   "0007_desktop_sessions.sql",
   "0008_desktop_auth_codes.sql",
 ];
-for (const file of migrations) {
-  if (appliedSet.has(file)) {
-    console.log(`Skipping (already applied): ${file}`);
-    continue;
+
+export async function runMigrations(pool, logger = console) {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        filename TEXT PRIMARY KEY,
+        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+
+    const applied = await client.query("SELECT filename FROM schema_migrations");
+    const appliedSet = new Set(applied.rows.map((row) => row.filename));
+
+    for (const file of migrations) {
+      if (appliedSet.has(file)) {
+        logger.log(`Skipping (already applied): ${file}`);
+        continue;
+      }
+
+      const sql = readFileSync(resolve(__dirname, "migrations", file), "utf8");
+      logger.log(`Running migration: ${file}`);
+      await client.query("BEGIN");
+      try {
+        await client.query(sql);
+        await client.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [file]);
+        await client.query("COMMIT");
+      } catch (error) {
+        try {
+          await client.query("ROLLBACK");
+        } catch {
+          // Preserve the original migration error.
+        }
+        throw error;
+      }
+      logger.log(`Done: ${file}`);
+    }
+  } finally {
+    client.release();
   }
-  const sql = readFileSync(resolve(__dirname, "migrations", file), "utf8");
-  console.log(`Running migration: ${file}`);
-  await pool.query(sql);
-  await pool.query("INSERT INTO schema_migrations (filename) VALUES ($1)", [file]);
-  console.log(`Done: ${file}`);
 }
-await pool.end();
-console.log("All migrations complete.");
+
+async function main() {
+  const pool = new pg.Pool({
+    connectionString: url || "postgres://localhost/html_docs_dev",
+    ssl: getPostgresSslOptions(),
+  });
+  try {
+    await runMigrations(pool);
+    console.log("All migrations complete.");
+  } finally {
+    await pool.end();
+  }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+  await main();
+}
