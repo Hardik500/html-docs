@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { useLoaderData, useFetcher, redirect, Link, data } from "react-router";
+import { useLoaderData, useFetcher, redirect, Link, Form, data } from "react-router";
 import type { Route } from "./+types/d.$docId.edit";
 import { query, withTransaction } from "~/lib/db.server";
 import { getUserId } from "~/lib/auth.server";
@@ -913,9 +913,13 @@ export default function EditPage() {
           )}
           <ThemeToggle />
           {!isOwner && (
-            <Link to="/auth/magic" className="text-xs font-medium ml-2 transition-colors text-primary">
-              Sign in to claim →
-            </Link>
+            <Form method="post" action="/auth/magic" className="ml-2">
+              <input type="hidden" name="claimDocId" value={doc.id} />
+              <input type="hidden" name="claimEditToken" value={doc.editToken} />
+              <button type="submit" className="text-xs font-medium transition-colors text-primary">
+                Sign in to claim →
+              </button>
+            </Form>
           )}
         </div>
       </header>

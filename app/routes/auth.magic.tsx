@@ -17,6 +17,16 @@ export const meta: Route.MetaFunction = () => [{ title: "Sign in — html-docs" 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const claimDocId = String(formData.get("claimDocId") ?? "").trim();
+  const claimEditToken = String(formData.get("claimEditToken") ?? "").trim();
+  const hasClaim = Boolean(claimDocId || claimEditToken);
+  if (
+    hasClaim &&
+    (!/^[a-zA-Z0-9_-]{1,64}$/.test(claimDocId) ||
+      !/^[a-zA-Z0-9_-]{24,128}$/.test(claimEditToken))
+  ) {
+    return { error: "Invalid document claim request." };
+  }
 
   const parsed = z.string().email().safeParse(email);
   if (!parsed.success) return { error: "Invalid email address." };
@@ -32,15 +42,24 @@ export async function action({ request }: Route.ActionArgs) {
   // Must pass responseHeaders so the PKCE code verifier cookie gets set on
   // the client. Without it, Supabase rejects the callback as otp_expired.
   const responseHeaders = new Headers();
+  if (hasClaim) {
+    const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+    responseHeaders.append(
+      "Set-Cookie",
+      `html_docs_claim_${claimDocId}=${encodeURIComponent(claimEditToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secure}`,
+    );
+  }
   const { supabase } = createSupabaseServerClient(request, responseHeaders);
   // Strip trailing slash to prevent double-slash in emailRedirectTo (e.g. APP_URL="https://host/" → "https://host//auth/callback")
   // Fall back to the request's own origin so the callback URL is always correct even if APP_URL is missing.
   const appUrl = (process.env.APP_URL || new URL(request.url).origin).replace(/\/+$/, "");
+  const callbackUrl = new URL(`${appUrl}/auth/callback`);
+  if (hasClaim) callbackUrl.searchParams.set("claimDocId", claimDocId);
 
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${appUrl}/auth/callback`,
+      emailRedirectTo: callbackUrl.toString(),
       shouldCreateUser: true,
     },
   });

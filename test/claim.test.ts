@@ -1,0 +1,47 @@
+import { describe, expect, it, vi } from "vitest";
+import { claimDocument } from "~/lib/claim.server";
+
+describe("anonymous document claim", () => {
+  it("claims an unowned document and records the hosted change", async () => {
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({
+        rows: [{ owner_user_id: null, edit_token: "edit-token" }],
+      })
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({ rows: [{ revision: 2 }] })
+      .mockResolvedValueOnce({ rows: [] });
+
+    const result = await claimDocument(
+      query,
+      "doc123",
+      "edit-token",
+      "11111111-1111-4111-8111-111111111111",
+    );
+
+    expect(result.kind).toBe("claimed");
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("UPDATE docs"),
+      expect.arrayContaining([
+        "11111111-1111-4111-8111-111111111111",
+        expect.any(String),
+        "doc123",
+      ]),
+    );
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining("INSERT INTO sync_changes"),
+      ["doc123", "11111111-1111-4111-8111-111111111111", 2],
+    );
+  });
+
+  it("does not claim an already owned document", async () => {
+    const query = vi.fn().mockResolvedValue({
+      rows: [{ owner_user_id: "another-user", edit_token: "edit-token" }],
+    });
+
+    await expect(
+      claimDocument(query, "doc123", "edit-token", "current-user"),
+    ).resolves.toEqual({ kind: "owned" });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+});

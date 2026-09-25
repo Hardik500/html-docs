@@ -1,6 +1,18 @@
 import { redirect } from "react-router";
 import type { Route } from "./+types/auth.callback";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
+import { withTransaction } from "~/lib/db.server";
+import { claimDocument } from "~/lib/claim.server";
+
+function readCookie(header: string, name: string): string | null {
+  const value = header
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
+  return value ? decodeURIComponent(value) : null;
+}
+
 
 export async function loader({ request }: Route.LoaderArgs) {
   const url = new URL(request.url);
@@ -24,13 +36,39 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const { supabase } = createSupabaseServerClient(request, responseHeaders);
-  const { error } = await supabase.auth.exchangeCodeForSession(code);
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  const user = data?.user;
 
-  if (error) {
-    console.error("[auth/callback] exchange error:", error.message);
+  if (error || !user) {
+    console.error(
+      "[auth/callback] exchange error:",
+      error?.message ?? "No authenticated user",
+    );
     return redirect("/auth/magic?error=invalid_link", {
       headers: responseHeaders,
     });
+  }
+
+  const claimDocId = url.searchParams.get("claimDocId") ?? "";
+  if (/^[a-zA-Z0-9_-]{1,64}$/.test(claimDocId)) {
+    const claimCookieName = `html_docs_claim_${claimDocId}`;
+    const claimToken = readCookie(
+      request.headers.get("cookie") ?? "",
+      claimCookieName,
+    );
+    if (claimToken && /^[a-zA-Z0-9_-]{24,128}$/.test(claimToken)) {
+      const result = await withTransaction((runQuery) =>
+        claimDocument(runQuery, claimDocId, claimToken, user.id),
+      );
+      const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
+      responseHeaders.append(
+        "Set-Cookie",
+        `${claimCookieName}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`,
+      );
+      if (result.kind === "claimed") {
+        return redirect(`/d/${claimDocId}/edit`, { headers: responseHeaders });
+      }
+    }
   }
 
   const rawRedirect = url.searchParams.get("redirect") ?? "";
