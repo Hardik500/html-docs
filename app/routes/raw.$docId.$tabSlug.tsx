@@ -1,6 +1,6 @@
 import type { Route } from "./+types/raw.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
-import { rawResponseHeaders } from "~/lib/csp.server";
+import { rawBinaryResponseHeaders, rawResponseHeaders } from "~/lib/csp.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
 import { docToHtml } from "~/lib/doc";
@@ -48,7 +48,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     const binary = Uint8Array.from(atob(html), (c) => c.charCodeAt(0));
     return new Response(binary, {
       status: 200,
-      headers: { "Content-Type": "application/pdf" },
+      headers: {
+        "Content-Type": "application/pdf",
+        ...rawBinaryResponseHeaders(),
+      },
     });
   }
 

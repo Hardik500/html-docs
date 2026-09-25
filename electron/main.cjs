@@ -150,6 +150,48 @@ function isAppUrl(value, origin) {
   }
 }
 
+function isRawUrl(value, origin) {
+  try {
+    const url = new URL(value);
+    return url.origin === origin && url.pathname.startsWith("/raw/");
+  } catch {
+    return false;
+  }
+}
+
+function createRawWindow(url, origin) {
+  const rawWindow = new BrowserWindow({
+    width: 1100,
+    height: 800,
+    minWidth: 720,
+    minHeight: 520,
+    backgroundColor: "#faf9f5",
+    title: "html-docs document",
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      spellcheck: true,
+    },
+  });
+  rawWindow.webContents.setWindowOpenHandler(({ url: nextUrl }) => {
+    if (isRawUrl(nextUrl, origin)) createRawWindow(nextUrl, origin);
+    else openExternal(nextUrl);
+    return { action: "deny" };
+  });
+  rawWindow.webContents.on("will-navigate", (event, nextUrl) => {
+    if (isRawUrl(nextUrl, origin)) return;
+    event.preventDefault();
+    openExternal(nextUrl);
+  });
+  rawWindow.webContents.on("will-redirect", (event, nextUrl) => {
+    if (isRawUrl(nextUrl, origin)) return;
+    event.preventDefault();
+    openExternal(nextUrl);
+  });
+  void rawWindow.loadURL(url);
+}
+
 function createPreviewWindow(url) {
   const preview = new BrowserWindow({
     width: 1100,
@@ -167,11 +209,17 @@ function createPreviewWindow(url) {
     },
   });
   preview.webContents.setWindowOpenHandler(({ url: nextUrl }) => {
-    if (isAppUrl(nextUrl, appOrigin)) createPreviewWindow(nextUrl);
+    if (isRawUrl(nextUrl, appOrigin)) createRawWindow(nextUrl, appOrigin);
+    else if (isAppUrl(nextUrl, appOrigin)) createPreviewWindow(nextUrl);
     else openExternal(nextUrl);
     return { action: "deny" };
   });
   preview.webContents.on("will-navigate", (event, nextUrl) => {
+    if (isRawUrl(nextUrl, appOrigin)) {
+      event.preventDefault();
+      createRawWindow(nextUrl, appOrigin);
+      return;
+    }
     if (isAppUrl(nextUrl, appOrigin)) return;
     event.preventDefault();
     openExternal(nextUrl);
@@ -210,17 +258,28 @@ function createWindow({ origin, token }) {
 
   const contents = mainWindow.webContents;
   contents.setWindowOpenHandler(({ url }) => {
-    if (isAppUrl(url, origin)) createPreviewWindow(url);
+    if (isRawUrl(url, origin)) createRawWindow(url, origin);
+    else if (isAppUrl(url, origin)) createPreviewWindow(url);
     else openExternal(url);
     return { action: "deny" };
   });
   contents.on("will-navigate", (event, url) => {
-    if (url.startsWith(`${origin}/`) || url === origin) return;
+    if (isRawUrl(url, origin)) {
+      event.preventDefault();
+      createRawWindow(url, origin);
+      return;
+    }
+    if (isAppUrl(url, origin)) return;
     event.preventDefault();
     openExternal(url);
   });
   contents.on("will-redirect", (event, url) => {
-    if (url.startsWith(`${origin}/`) || url === origin) return;
+    if (isRawUrl(url, origin)) {
+      event.preventDefault();
+      createRawWindow(url, origin);
+      return;
+    }
+    if (isAppUrl(url, origin)) return;
     event.preventDefault();
     openExternal(url);
   });

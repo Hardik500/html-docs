@@ -33,11 +33,22 @@ export const RAW_CSP = [
   "base-uri 'none'",
   "form-action 'none'",
   "frame-ancestors 'self'",
+  // Prevent direct /raw navigation from becoming a same-origin application document.
+  "sandbox allow-scripts",
 ].join("; ");
 
 /**
  * Extra security headers applied to /raw responses.
  */
+export function rawBinaryResponseHeaders(): HeadersInit {
+  return {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+    "Content-Disposition": "inline",
+  };
+}
+
 export function rawResponseHeaders(): HeadersInit {
   return {
     "Content-Security-Policy": RAW_CSP,
