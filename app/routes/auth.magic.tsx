@@ -1,4 +1,4 @@
-import { Form, useActionData, Link, data } from "react-router";
+import { Form, useActionData, useLoaderData, Link, data } from "react-router";
 import type { Route } from "./+types/auth.magic";
 import { createSupabaseServerClient } from "~/lib/supabase.server";
 import { checkMagicEmailRate, checkMagicIpRate } from "~/lib/ratelimit.server";
@@ -14,14 +14,27 @@ function getClientIp(request: Request): string {
 
 export const meta: Route.MetaFunction = () => [{ title: "Sign in — html-docs" }];
 
+/**
+ * Shared guard for post-sign-in destinations. Only same-origin relative paths
+ * are allowed, and backslashes are rejected because browsers normalize
+ * "/\host" to "//host".
+ */
+export function safeReturnPath(value: string | null | undefined): string {
+  return typeof value === "string" && /^\/(?!\/)[^\r\n\\]*$/.test(value) ? value : "";
+}
+
+export function loader({ request }: Route.LoaderArgs) {
+  // The OAuth authorization endpoint round-trips through this page, so the
+  // hidden field must be populated during SSR rather than after hydration.
+  return { returnPath: safeReturnPath(new URL(request.url).searchParams.get("redirect")) };
+}
+
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const rawRedirect = String(formData.get("redirect") ?? "").trim();
-  // Only same-origin relative paths may be replayed after sign-in. Reject
-  // protocol-relative and backslash forms that browsers normalize to "//host".
-  const redirectTo =
-    /^\/(?!\/)[^\r\n\\]*$/.test(rawRedirect) ? rawRedirect : "";
+  // Only same-origin relative paths may be replayed after sign-in.
+  const redirectTo = safeReturnPath(rawRedirect);
   if (rawRedirect && !redirectTo) {
     return { error: "Invalid sign-in return path." };
   }
@@ -83,16 +96,12 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function MagicLinkPage() {
   const actionData = useActionData<typeof action>();
+  const { returnPath } = useLoaderData<typeof loader>();
   // Also surface errors forwarded from /auth/callback via query string
   const search =
     typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
   const urlError = search.get("error");
   const errorMessage = ('error' in (actionData ?? {}) ? (actionData as { error: string }).error : null) ?? urlError;
-
-  // Preserved so the OAuth authorization request survives the magic-link trip.
-  const returnPath = /^\/(?!\/)[^\r\n\\]*$/.test(search.get("redirect") ?? "")
-    ? (search.get("redirect") as string)
-    : "";
 
   return (
     <main className="min-h-screen flex items-center justify-center px-4 bg-canvas text-ink">

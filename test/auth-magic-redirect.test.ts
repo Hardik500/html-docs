@@ -15,7 +15,7 @@ vi.mock("~/lib/ratelimit.server", () => ({
   checkMagicIpRate: mocks.checkMagicIpRate,
 }));
 
-import { action } from "~/routes/auth.magic";
+import { action, loader, safeReturnPath } from "~/routes/auth.magic";
 
 /**
  * The OAuth authorization endpoint round-trips the user through this form, so
@@ -82,5 +82,44 @@ describe("magic link return path", () => {
     const redirect = new URL(mocks.signInWithOtp.mock.calls[0][0].options.emailRedirectTo);
     expect(redirect.searchParams.get("claimDocId")).toBe("abc123");
     expect(redirect.searchParams.get("redirect")).toBe("/dashboard");
+  });
+});
+
+describe("magic link return path guard", () => {
+  it("accepts same-origin relative paths", () => {
+    expect(safeReturnPath("/dashboard")).toBe("/dashboard");
+    expect(safeReturnPath("/oauth/authorize?client_id=abc&state=xyz")).toBe(
+      "/oauth/authorize?client_id=abc&state=xyz",
+    );
+  });
+
+  it("rejects every unsafe form", () => {
+    for (const value of [
+      "//evil.example",
+      "/\\evil.example",
+      "https://evil.example",
+      "/a\nb",
+      "",
+      null,
+      undefined,
+    ]) {
+      expect(safeReturnPath(value)).toBe("");
+    }
+  });
+});
+
+describe("magic link loader", () => {
+  it("surfaces the return path during SSR so the form never loses it", () => {
+    const url = new URL("https://html-docs.example/auth/magic");
+    url.searchParams.set("redirect", "/oauth/authorize?client_id=abc");
+    const data = loader({ request: new Request(url) as never, params: {}, context: {} } as never);
+    expect(data.returnPath).toBe("/oauth/authorize?client_id=abc");
+  });
+
+  it("renders an empty return path for an unsafe value", () => {
+    const url = new URL("https://html-docs.example/auth/magic");
+    url.searchParams.set("redirect", "//evil.example");
+    const data = loader({ request: new Request(url) as never, params: {}, context: {} } as never);
+    expect(data.returnPath).toBe("");
   });
 });
