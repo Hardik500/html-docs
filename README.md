@@ -163,7 +163,7 @@ The hosted app exposes a stateless MCP endpoint at:
 https://your-hosted-origin.example.com/mcp
 ```
 
-Create a read-only agent token from **Dashboard → Agents**, then configure an MCP client with the token:
+Create an agent token from **Dashboard → Agents**, choosing only the scopes the agent needs, then configure an MCP client with the token:
 
 ```json
 {
@@ -179,9 +179,23 @@ Create a read-only agent token from **Dashboard → Agents**, then configure an 
 }
 ```
 
-The first MCP release exposes authenticated, read-only tools for listing, searching, and reading owned documents. Write tools and OAuth 2.1 authorization are planned as follow-up work. Agent tokens are stored hashed and can be revoked from the dashboard.
+Agent tokens are stored hashed and can be revoked from the dashboard.
 
-The MCP endpoint requires the hosted database migration that creates the `agent_access_tokens` and `agent_audit_events` tables. Migrations are not run by the Vercel build; run the release migration explicitly before enabling the endpoint in production.
+### Tools and scopes
+
+| Scope | Tools |
+| --- | --- |
+| `docs:read` | `whoami`, `list_documents`, `search_documents`, `get_document`, `get_tab` |
+| `docs:write` | `create_document`, `update_document`, `update_tab` |
+| `docs:delete` | `delete_document` |
+
+All tools operate only on documents owned by the authenticated account.
+
+Every mutating tool requires an explicit `baseRevision` argument. Read the document first and pass the revision it reports; a mismatch is rejected with a conflict rather than overwriting a newer edit.
+
+Mutating tools also accept an optional `idempotencyKey`. Repeating a call with the same key replays the original result instead of writing twice, so retried or re-emitted tool calls stay safe.
+
+The MCP endpoint requires hosted migrations that create the `agent_access_tokens`, `agent_audit_events`, and `agent_idempotency_keys` tables. Migrations are not run by the Vercel build; run the release migration explicitly before enabling the endpoint in production.
 
 ## Configuration
 

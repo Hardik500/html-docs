@@ -17,115 +17,13 @@ import {
   recordDocumentChange,
 } from "~/lib/sync.server";
 import { isDesktopRuntime } from "~/lib/runtime.server";
+import { MAX_TABS, validateSaveTabs } from "~/lib/document-input";
 
 const Editor = lazy(() => import("~/components/Editor"));
 const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
 const DocEditor = lazy(() => import("~/components/DocEditor"));
-const MAX_TABS = 20;
-const TAB_CONTENT_TYPES = new Set<TabContentType>(["html", "markdown", "pdf", "doc"]);
 
-type SubmittedTab = {
-  id?: string;
-  slug?: string;
-  name: string;
-  position: number;
-  html?: string;
-  content_type?: TabContentType;
-  _delete?: true;
-};
-
-function rejectSave(message: string, status = 400): never {
-  throw new Response(message, { status });
-}
-
-export function validateSaveTabs(value: unknown): SubmittedTab[] {
-  if (!Array.isArray(value)) {
-    rejectSave("tabs must be an array");
-  }
-
-  const seenIds = new Set<string>();
-  const seenSlugs = new Set<string>();
-  const tabs: SubmittedTab[] = [];
-
-  for (const rawTab of value) {
-    if (!rawTab || typeof rawTab !== "object" || Array.isArray(rawTab)) {
-      rejectSave("Invalid tab");
-    }
-
-    const tab = rawTab as Record<string, unknown>;
-    const id = tab.id === undefined ? undefined : tab.id;
-    if (id !== undefined && (typeof id !== "string" || !/^(?:new:[A-Za-z0-9-]{1,64}|[A-Za-z0-9_-]{1,64})$/.test(id))) {
-      rejectSave("Invalid tab id");
-    }
-    if (id && seenIds.has(id)) {
-      rejectSave("Duplicate tab id");
-    }
-    if (id) seenIds.add(id);
-
-    if (tab._delete === true) {
-      if (!id) rejectSave("Deleted tab id is required");
-      tabs.push({ id, name: "", position: 0, _delete: true });
-      continue;
-    }
-    if (tab._delete !== undefined && tab._delete !== false) {
-      rejectSave("Invalid tab delete marker");
-    }
-
-    const name = tab.name;
-    if (typeof name !== "string" || name.length > 200) {
-      rejectSave("Invalid tab name");
-    }
-
-    const position = tab.position;
-    if (typeof position !== "number" || !Number.isInteger(position) || position < 0) {
-      rejectSave("Invalid tab position");
-    }
-
-    const html = tab.html;
-    if (typeof html !== "string") {
-      rejectSave("Tab content is required");
-    }
-
-    const contentType = tab.content_type ?? "html";
-    if (typeof contentType !== "string" || !TAB_CONTENT_TYPES.has(contentType as TabContentType)) {
-      rejectSave("Invalid tab content type");
-    }
-
-    if (new TextEncoder().encode(html).length > maxBytesForType(contentType as TabContentType)) {
-      rejectSave("Tab exceeds its content limit", 413);
-    }
-
-    const slug = tab.slug;
-    if (slug !== undefined) {
-      if (typeof slug !== "string" || slug.length > 200) {
-        rejectSave("Invalid tab slug");
-      }
-      if (slug) {
-        if (seenSlugs.has(slug)) rejectSave("Duplicate tab slug");
-        seenSlugs.add(slug);
-      }
-    }
-
-    tabs.push({
-      ...(id ? { id } : {}),
-      ...(typeof slug === "string" ? { slug } : {}),
-      name,
-      position,
-      html,
-      content_type: contentType as TabContentType,
-    });
-  }
-
-  const activeTabs = tabs.filter((tab) => !tab._delete);
-  if (activeTabs.length > MAX_TABS) {
-    rejectSave("Too many tabs");
-  }
-  if (activeTabs.length === 0) {
-    rejectSave("A document must contain at least one tab");
-  }
-
-  return tabs;
-}
+export { validateSaveTabs } from "~/lib/document-input";
 
 // ── Loader ──────────────────────────────────────────────────────────────────
 

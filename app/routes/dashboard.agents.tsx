@@ -6,8 +6,16 @@ import { isDesktopRuntime } from "~/lib/runtime.server";
 import {
   createAgentToken,
   listAgentTokens,
+  normalizeAgentScopes,
   revokeAgentToken,
+  type AgentScope,
 } from "~/lib/agent-tokens.server";
+
+const SCOPE_OPTIONS: Array<{ scope: AgentScope; label: string; hint: string }> = [
+  { scope: "docs:read", label: "Read", hint: "List, search, and read documents and tabs" },
+  { scope: "docs:write", label: "Write", hint: "Create documents and update titles and tabs" },
+  { scope: "docs:delete", label: "Delete", hint: "Permanently delete documents" },
+];
 
 export const meta: Route.MetaFunction = () => [{ title: "Agent access — html-docs" }];
 
@@ -25,7 +33,8 @@ export async function action({ request }: Route.ActionArgs) {
 
   if (intent === "create") {
     const name = String(formData.get("name") ?? "").trim();
-    const result = await createAgentToken(userId, name, ["docs:read"]);
+    const scopes = normalizeAgentScopes(formData.getAll("scopes"));
+    const result = await createAgentToken(userId, name, scopes);
     return { created: result.summary, token: result.token };
   }
 
@@ -69,15 +78,15 @@ export default function DashboardAgents() {
       <div className="mx-auto max-w-4xl px-6 py-12">
         <h1 className="text-3xl font-bold tracking-tight">Agent access</h1>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted">
-          Create a read-only token for an AI agent to connect to the html-docs MCP server.
-          Tokens are shown once and can be revoked at any time.
+          Create a token for an AI agent to connect to the html-docs MCP server. Grant only the
+          scopes the agent needs. Tokens are shown once and can be revoked at any time.
         </p>
 
         <div className="mt-8 rounded-xl border border-hairline bg-paper p-5 shadow-sm">
           <h2 className="text-lg font-semibold">Create a token</h2>
-          <Form method="post" className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <Form method="post" className="mt-4 flex flex-col gap-4">
             <input type="hidden" name="intent" value="create" />
-            <label className="flex-1 text-sm">
+            <label className="text-sm">
               <span className="mb-1 block text-xs font-medium text-muted">Token name</span>
               <input
                 name="name"
@@ -87,11 +96,36 @@ export default function DashboardAgents() {
                 className="w-full rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm outline-none focus:border-primary"
               />
             </label>
+
+            <fieldset>
+              <legend className="mb-2 text-xs font-medium text-muted">Permissions</legend>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {SCOPE_OPTIONS.map((option) => (
+                  <label
+                    key={option.scope}
+                    className="flex flex-1 cursor-pointer items-start gap-2 rounded-lg border border-hairline bg-canvas px-3 py-2 text-sm hover:border-primary"
+                  >
+                    <input
+                      type="checkbox"
+                      name="scopes"
+                      value={option.scope}
+                      defaultChecked={option.scope === "docs:read"}
+                      className="mt-0.5"
+                    />
+                    <span>
+                      <span className="block font-medium">{option.label}</span>
+                      <span className="block text-xs text-muted">{option.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
             <button
               type="submit"
-              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
+              className="self-start rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-dark"
             >
-              Create read-only token
+              Create token
             </button>
           </Form>
         </div>

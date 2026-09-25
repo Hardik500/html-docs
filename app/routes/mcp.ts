@@ -9,10 +9,16 @@ import {
   type AgentScope,
 } from "~/lib/agent-tokens.server";
 import {
+  createUserDocument,
+  deleteUserDocument,
   getUserDocument,
   getUserDocumentTab,
   listUserDocuments,
+  updateUserDocument,
+  updateUserDocumentTab,
 } from "~/lib/document-service.server";
+import { withIdempotency } from "~/lib/agent-idempotency.server";
+import { AgentWriteError, validateNewDocumentTabs, validateSaveTabs } from "~/lib/document-input";
 import { checkMcpRate } from "~/lib/ratelimit.server";
 import { isDesktopRuntime } from "~/lib/runtime.server";
 
@@ -78,6 +84,18 @@ function toolError(message: string) {
 function hasScope(identity: AgentIdentity, scope: AgentScope): boolean {
   return identity.scopes.includes(scope);
 }
+
+const contentTypeSchema = z.enum(["html", "markdown", "pdf", "doc"]);
+
+const tabWriteSchema = z.object({
+  id: z.string().max(64).optional(),
+  slug: z.string().max(200).optional(),
+  name: z.string().max(200).optional(),
+  position: z.number().int().min(0).optional(),
+  html: z.string().optional(),
+  content_type: contentTypeSchema.optional(),
+  _delete: z.boolean().optional(),
+});
 
 function resourceUrl(request: Request): URL {
   return new URL(process.env.MCP_RESOURCE_URL || new URL("/mcp", request.url).toString());
@@ -187,6 +205,155 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
       }
       audit("get_tab", documentId, "ok", { tabSlug });
       return toolResult(tab as unknown as Record<string, unknown>);
+    },
+  );
+
+  // ── Write tools ──────────────────────────────────────────────────────────
+  //
+  // Every mutating tool requires an explicit `baseRevision` so an agent can
+  // never silently overwrite a newer human or agent edit, and accepts an
+  // `idempotencyKey` so a retried call is safe.
+
+  const runWrite = async <T>(
+    toolName: string,
+    documentId: string | null,
+    idempotencyKey: string | null,
+    metadata: Record<string, unknown>,
+    run: () => Promise<T>,
+  ) => {
+    try {
+      const { result, replayed } = await withIdempotency(identity, idempotencyKey, toolName, run);
+      audit(toolName, documentId, "ok", { ...metadata, replayed });
+      return toolResult({
+        ...(result as unknown as Record<string, unknown>),
+        idempotencyKeyApplied: Boolean(idempotencyKey),
+        replayed,
+      });
+    } catch (error) {
+      if (error instanceof AgentWriteError) {
+        audit(toolName, documentId, "error", { ...metadata, reason: error.message.slice(0, 200) });
+        return toolError(`${error.message} (status ${error.status})`);
+      }
+      throw error;
+    }
+  };
+
+  server.registerTool(
+    "create_document",
+    {
+      description:
+        "Create a new document owned by the authenticated account. Requires docs:write. " +
+        "Pass the same idempotencyKey when retrying to avoid creating duplicates.",
+      inputSchema: {
+        title: z.string().max(500).optional(),
+        tabs: z
+          .array(
+            z.object({
+              name: z.string().max(200).optional(),
+              content: z.string(),
+              contentType: contentTypeSchema.optional(),
+            }),
+          )
+          .min(1)
+          .max(20),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ title, tabs, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
+      const validated = validateNewDocumentTabs(tabs);
+      return runWrite(
+        "create_document",
+        null,
+        idempotencyKey ?? null,
+        { tabCount: validated.length },
+        () => createUserDocument(identity.userId, { title, tabs: validated }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "update_document",
+    {
+      description:
+        "Replace the title and/or full tab list of an owned document. Requires docs:write. " +
+        "Read the document first and pass its current revision as baseRevision.",
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        title: z.string().max(500).optional(),
+        tabs: z.array(tabWriteSchema).min(1).max(40),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, title, tabs, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
+      const validated = validateSaveTabs(tabs);
+      return runWrite(
+        "update_document",
+        documentId,
+        idempotencyKey ?? null,
+        { tabCount: validated.length, hasTitle: title !== undefined },
+        () => updateUserDocument(identity.userId, documentId, { title, tabs: validated, baseRevision }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "update_tab",
+    {
+      description:
+        "Update one tab of an owned document by slug. Requires docs:write. " +
+        "Read the document first and pass its current revision as baseRevision.",
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        tabSlug: z.string().regex(TAB_SLUG_PATTERN),
+        name: z.string().max(200).optional(),
+        content: z.string().optional(),
+        contentType: contentTypeSchema.optional(),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, tabSlug, name, content, contentType, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
+      return runWrite(
+        "update_tab",
+        documentId,
+        idempotencyKey ?? null,
+        { tabSlug, hasContent: content !== undefined },
+        () =>
+          updateUserDocumentTab(identity.userId, documentId, tabSlug, {
+            name,
+            content,
+            contentType,
+            baseRevision,
+          }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "delete_document",
+    {
+      description:
+        "Soft-delete an owned document and its tabs. Requires docs:delete. " +
+        "Read the document first and pass its current revision as baseRevision.",
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:delete")) return toolError("Missing required scope: docs:delete");
+      return runWrite(
+        "delete_document",
+        documentId,
+        idempotencyKey ?? null,
+        {},
+        () => deleteUserDocument(identity.userId, documentId, { baseRevision }),
+      );
     },
   );
 
