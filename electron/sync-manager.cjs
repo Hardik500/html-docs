@@ -90,6 +90,7 @@ function createSyncManager({
       const response = await fetch(`${normalizedRemoteUrl}/desktop/auth/revoke`, {
         method: "POST",
         headers: { Authorization: `Bearer ${value}` },
+        signal: AbortSignal.timeout(15_000),
       });
       return response.ok;
     } catch {
@@ -216,6 +217,7 @@ function createSyncManager({
         Authorization: `Bearer ${token}`,
         "X-HTML-DOCS-DESKTOP-TOKEN": local.token,
       },
+      signal: AbortSignal.timeout(30_000),
     });
   }
 
@@ -234,8 +236,11 @@ function createSyncManager({
     setStatus({ state: "syncing", message: "Syncing local documents…" });
 
     try {
+      console.log(`[desktop-sync] starting push/pull against ${normalizedRemoteUrl}`);
       const push = await parseSyncResponse(await callLocal("push"));
+      console.log(`[desktop-sync] push complete: ${JSON.stringify(push)}`);
       const pull = await parseSyncResponse(await callLocal("pull"));
+      console.log(`[desktop-sync] pull complete: ${JSON.stringify(pull)}`);
       const conflicts = [...(push.conflicts ?? []), ...(pull.conflicts ?? [])];
       const partial = Boolean(pull.partial);
       setStatus({
@@ -250,6 +255,7 @@ function createSyncManager({
             : "All local documents are synced.",
       });
     } catch (error) {
+      console.error("[desktop-sync] failed", error);
       if (error.status === 401) {
         await clearToken();
         return;
@@ -272,6 +278,7 @@ function createSyncManager({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code, state }),
+      signal: AbortSignal.timeout(30_000),
     });
     const payload = await parseSyncResponse(response);
     if (!payload.token || !String(payload.token).startsWith("dhd_")) {

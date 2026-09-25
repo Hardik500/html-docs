@@ -36,11 +36,19 @@ async function remoteRequest(
   headers.set("Authorization", `Bearer ${token}`);
   headers.set("Accept", "application/json");
 
-  const response = await fetch(`${getRemoteUrl()}${path}`, {
-    ...init,
-    headers,
-  });
-  return response;
+  try {
+    const response = await fetch(`${getRemoteUrl()}${path}`, {
+      ...init,
+      headers,
+      signal: AbortSignal.timeout(30_000),
+    });
+    return response;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new Response("Remote sync request timed out", { status: 504 });
+    }
+    throw new Response("Remote sync request failed", { status: 502 });
+  }
 }
 
 async function readLocalSnapshot(runQuery: QueryRunner, docId: string) {
