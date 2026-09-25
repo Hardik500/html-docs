@@ -5,6 +5,7 @@ import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
+import { injectPreviewCsp } from "~/lib/preview-csp";
 import { markdownToHtml } from "~/lib/markdown";
 import { docToHtml } from "~/lib/doc";
 import { isDesktopRuntime } from "~/lib/runtime.server";
@@ -250,7 +251,7 @@ export default function Dashboard() {
                       </div>
                     ) : doc.html ? (
                       <iframe
-                        srcDoc={injectDefaultStyles(doc.html, isDark)}
+                        srcDoc={injectPreviewCsp(injectDefaultStyles(doc.html, isDark))}
                         sandbox="allow-scripts"
                         loading="lazy"
                         tabIndex={-1}

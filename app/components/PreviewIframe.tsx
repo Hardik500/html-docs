@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { markdownToHtml } from "~/lib/markdown";
 import { docToHtml } from "~/lib/doc";
+import { injectPreviewCsp } from "~/lib/preview-csp";
 
 interface PreviewIframeProps {
   html: string;
@@ -21,27 +22,6 @@ interface FrameState {
 }
 
 const CROSSFADE_MS = 150;
-
-const PREVIEW_CSP = [
-  "default-src 'none'",
-  "script-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.skypack.dev",
-  "style-src 'unsafe-inline' https://fonts.googleapis.com https://unpkg.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
-  "font-src https://fonts.gstatic.com data:",
-  "img-src https: data:",
-  "connect-src https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://unpkg.com https://cdn.skypack.dev",
-  "frame-src 'none'",
-  "object-src 'none'",
-  "base-uri 'none'",
-  "form-action 'none'",
-].join("; ");
-
-function injectCsp(html: string): string {
-  const meta = `<meta http-equiv="Content-Security-Policy" content="${PREVIEW_CSP}">`;
-  if (/<head[^>]*>/i.test(html)) {
-    return html.replace(/(<head[^>]*>)/i, `$1\n  ${meta}`);
-  }
-  return meta + "\n" + html;
-}
 
 function useIsDark() {
   const [isDark, setIsDark] = useState(
@@ -160,7 +140,7 @@ function HtmlPreview({ html, title = "Preview", contentType }: HtmlPreviewProps)
             if (el) iframeRefs.current.set(frame.id, el);
             else iframeRefs.current.delete(frame.id);
           }}
-          srcDoc={injectDefaultStyles(injectCsp(frame.html), isDark)}
+          srcDoc={injectDefaultStyles(injectPreviewCsp(frame.html), isDark)}
           onLoad={() => handleLoad(frame.id)}
           sandbox="allow-scripts"
           title={title}
