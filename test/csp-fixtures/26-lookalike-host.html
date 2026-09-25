@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Lookalike host bypass attempt</title>
+  <!--
+    Every host here begins with an allowlisted CDN name but is a different
+    registrable domain. A prefix-matching analyser would wrongly treat these
+    as allowed; exact host matching must reject every one of them.
+  -->
+  <script src="https://cdnjs.cloudflare.com.evil.test/lib.js"></script>
+  <script src="https://unpkg.com.evil.test/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net.attacker.test/npm"></script>
+</head>
+<body>
+  <pre id="out">These subresources must all be blocked.</pre>
+  <script>
+    fetch('https://unpkg.com.evil.test/data')
+      .then(() => { document.getElementById('out').textContent = 'LEAKED'; })
+      .catch(() => { document.getElementById('out').textContent = 'blocked, as expected'; });
+  </script>
+</body>
+</html>

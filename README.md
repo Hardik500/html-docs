@@ -296,7 +296,17 @@ npm run typecheck
 node test/csp-check.mjs
 ```
 
-The Vitest suite covers the configured unit and integration behavior, including conversion, limits, auth, local database, document, and desktop-sync areas. `test/csp-check.mjs` is a separate manual report-only analyzer; it is not part of `npm test`, does not fail on findings, and does not replace browser verification. No browser E2E suite is currently configured.
+The Vitest suite covers the configured unit and integration behavior, including conversion, limits, auth, local database, document, and desktop-sync areas.
+
+`test/csp-check.mjs` statically analyses HTML fixtures against the real `RAW_CSP` policy imported from `app/lib/csp.server.ts`. It is not part of `npm test`, but it does exit non-zero when a fixture references a subresource the policy blocks, so it can be used as a gate. It remains static analysis and does not replace browser verification.
+
+To verify the `/raw` isolation boundary in a real browser:
+
+```bash
+node scripts/verify-raw-isolation.mjs <origin> <docId> <tabSlug>
+```
+
+No browser E2E suite is currently configured beyond this targeted check.
 
 ## Deployment
 

@@ -84,12 +84,14 @@ User-authored HTML is executable content by design; the application does not con
 
 - Landing/editor previews use `app/components/PreviewIframe.tsx` and must remain sandboxed without `allow-same-origin` unless a reviewed security design explicitly changes that model.
 - The public viewer in `app/routes/d.$docId.$tabSlug.tsx` has its own sandboxed iframe that loads `/raw/:docId/:tabSlug`; do not assume it inherits the editor's injected meta CSP.
-- `/raw/:docId/:tabSlug` returns authored HTML as a top-level response in the application origin. It currently has `RAW_CSP` but no response-level sandbox or separate-origin isolation, so it remains same-origin and executable. Treat this as a known security gap: require a CSP `sandbox` without `allow-same-origin` or serve raw content from an isolated origin, then test storage, cookie, navigation, and network behavior under direct navigation.
+- `/raw/:docId/:tabSlug` returns authored HTML as a top-level response in the application origin. It is isolated by a `sandbox allow-scripts` directive in `RAW_CSP` with no `allow-same-origin`, so the document loads in an opaque origin. This was verified in a real browser under direct navigation: `window.origin` is `null`, `document.cookie` throws `SecurityError`, `localStorage`/`sessionStorage` throw, and a same-origin `fetch` is refused by `connect-src`. Re-run `node scripts/verify-raw-isolation.mjs <origin> <docId> <tabSlug>` after changing `RAW_CSP`, the `sandbox` flags, or the `/raw` route.
 - Dashboard thumbnails use a separate `srcDoc`/sandbox path in `app/routes/dashboard.tsx`. Do not assume they receive the same CSP as `PreviewIframe`; keep this surface covered when policies change.
 - TipTap document tabs intentionally render structured rich-text through `DocEditor`/`EditorContent` in the application shell. This is a separate editor boundary, not raw HTML preview. Review TipTap parsing/rendering, pasted or imported content, links, images, and allowed attributes; never replace it with unrestricted raw-HTML injection.
 - Never move the raw HTML/Markdown preview path into the privileged application shell.
 
-`app/lib/csp.server.ts` is the main CSP policy source, while the rendering surfaces and `test/csp-check.mjs` contain related enforcement/analysis logic that can drift. The analyzer is currently stale in known ways: it describes `connect-src` as `'none'` even though `RAW_CSP` allows selected origins, and it uses prefix matching that can misclassify lookalike hosts. It prints findings without failing the process and cannot validate actual response headers or browser enforcement. Treat it only as a report and require per-surface tests for the editor, public viewer, direct `/raw`, and dashboard thumbnails.
+`app/lib/csp.server.ts` is the single CSP policy source. `test/csp-check.mjs` imports `RAW_CSP` from it rather than keeping a hand-copied mirror, so the two cannot drift; matching semantics live in `test/csp-policy.mjs` and are unit-tested against the real policy in `test/csp-policy.test.ts`. The analyser matches hosts exactly, so a lookalike such as `https://cdnjs.cloudflare.com.evil.test` is rejected rather than treated as allowlisted, and it evaluates the actual target URL of each network call instead of assuming `connect-src` is `'none'`. It exits non-zero when a fixture references a blocked subresource, so it can gate CI.
+
+The analyser is still static only: it cannot validate real response headers or browser enforcement. Keep per-surface coverage for the editor, the public viewer, direct `/raw`, and dashboard thumbnails, and use `scripts/verify-raw-isolation.mjs` for the `/raw` boundary.
 
 Other security invariants:
 
@@ -145,7 +147,17 @@ CSP/preview changes also require:
 node test/csp-check.mjs
 ```
 
-Inspect the analyzer output manually, but verify the actual response policy and every rendering path. Cover the landing/editor `PreviewIframe`, the public-viewer iframe loading `/raw`, dashboard thumbnails, direct top-level navigation to `/raw/:docId/:tabSlug`, and TipTap rich-text paste/import/rendering behavior. There is no configured browser E2E suite, so use proportionate browser verification for UI, preview, autosave, auth callbacks, and public-view flows.
+This analyser exits non-zero when a fixture references a blocked subresource, so treat that exit code as a gate. It is still static analysis, so verify the actual response policy and every rendering path. Cover the landing/editor `PreviewIframe`, the public-viewer iframe loading `/raw`, dashboard thumbnails, direct top-level navigation to `/raw/:docId/:tabSlug`, and TipTap rich-text paste/import/rendering behavior.
+
+For the direct-navigation `/raw` boundary, drive a real browser:
+
+```bash
+node scripts/verify-raw-isolation.mjs <origin> <docId> <tabSlug>
+```
+
+It asserts an opaque origin, unreachable cookies, isolated web storage, a blocked same-origin `fetch`, and no opener access, while confirming the document still renders. It uses a headless Chromium from the Playwright cache; set `CHROME_PATH` to override.
+
+There is no configured browser E2E suite, so use proportionate browser verification for UI, preview, autosave, auth callbacks, and public-view flows.
 
 `npm run desktop:verify` only performs limited package/runtime-config checks; it does not prove Electron isolation, preload safety, navigation restrictions, or runtime behavior. Desktop changes also need a real `npm run desktop:dev` or packaged-app smoke test when feasible.
 

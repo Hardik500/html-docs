@@ -3,162 +3,146 @@
  * CSP Static Analyser — html-docs
  *
  * Parses each HTML fixture, extracts every external resource URL and
- * risky API usage, then checks them against the current RAW_CSP policy.
- * No browser required — pure static analysis.
+ * network call, then evaluates it against the *real* RAW_CSP policy from
+ * app/lib/csp.server.ts.
+ *
+ * The policy is imported rather than mirrored, so the analyser cannot drift
+ * away from what the server actually sends. Matching semantics live in
+ * csp-policy.mjs and are covered by csp-policy.test.ts.
  *
  * Usage:  node test/csp-check.mjs
+ * Exits non-zero when a fixture contains a subresource the policy blocks.
  */
 
-import { readFileSync, readdirSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { readFileSync, readdirSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  directiveAllows,
+  extractNetworkUrls,
+  extractResourceUrls,
+  parseCsp,
+} from "./csp-policy.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = join(__dir, 'csp-fixtures');
+const FIXTURES_DIR = join(__dir, "csp-fixtures");
 
-// ─── Mirror of app/lib/csp.server.ts ────────────────────────────────────────
-const ALLOWED_SCRIPT_ORIGINS = [
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com',
-  'https://cdn.jsdelivr.net',
-  'https://cdnjs.cloudflare.com',
-  'https://cdn.skypack.dev',
-];
-const ALLOWED_STYLE_ORIGINS = [
-  'https://fonts.googleapis.com',
-  'https://unpkg.com',
-  'https://cdn.jsdelivr.net',
-  'https://cdnjs.cloudflare.com',
-];
-const ALLOWED_FONT_ORIGINS = ['https://fonts.gstatic.com'];
-// img-src https: data:  — any https OK
-// connect-src 'none'   — no fetch/XHR/WS
-// frame-src 'none'     — no nested iframes
-// form-action 'none'   — no form posts
-
-// ─── Sandbox restrictions (not CSP but equally important) ───────────────────
-// sandbox="allow-scripts" WITHOUT allow-same-origin:
-//   - localStorage / sessionStorage / cookies → SecurityError
-//   - window.open / target="_blank" → blocked (no allow-popups)
-//   - document.cookie → SecurityError
-const SANDBOX_BLOCKS = ['localStorage', 'sessionStorage', 'document.cookie', 'window.open', 'indexedDB'];
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-function originOf(url) {
-  try { return new URL(url).origin; } catch { return url; }
-}
-function matchesAllowed(url, allowed) {
-  const origin = originOf(url);
-  return allowed.some(a => origin === a || url.startsWith(a));
+// ─── Load the real policy ────────────────────────────────────────────────────
+// csp.server.ts contains no TypeScript syntax, so Node can import it directly
+// once type stripping is available (default from Node 22.18 / 23.6 / 24).
+let RAW_CSP;
+try {
+  ({ RAW_CSP } = await import("../app/lib/csp.server.ts"));
+} catch (error) {
+  console.error(
+    "Could not import app/lib/csp.server.ts.\n" +
+      "Run this script on Node >= 22.18 (type stripping), or rely on `npm test`\n" +
+      "which evaluates the same policy through Vitest.\n",
+  );
+  console.error(String(error?.message ?? error));
+  process.exit(2);
 }
 
-// ─── Extractor ───────────────────────────────────────────────────────────────
-function analyse(html, filename) {
-  const issues = [];
-  const notes  = [];
+const policy = parseCsp(RAW_CSP);
 
-  // Script src
-  const scriptSrcs = [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => m[1]);
-  for (const src of scriptSrcs) {
-    if (src.startsWith('http')) {
-      if (!matchesAllowed(src, ALLOWED_SCRIPT_ORIGINS)) {
-        issues.push({ severity: 'BLOCK', directive: 'script-src', value: src, reason: 'Origin not in allowlist' });
-      } else {
-        notes.push({ severity: 'OK', directive: 'script-src', value: src });
-      }
+// ─── Sandbox restrictions (CSP sandbox, not a URL directive) ─────────────────
+// sandbox="allow-scripts" WITHOUT allow-same-origin / allow-popups /
+// allow-top-navigation means these APIs are unavailable to authored HTML.
+const SANDBOX_BLOCKS = {
+  localStorage: "no allow-same-origin",
+  sessionStorage: "no allow-same-origin",
+  indexedDB: "no allow-same-origin",
+  "document.cookie": "no allow-same-origin",
+  "window.open": "no allow-popups",
+  "top.location": "no allow-top-navigation",
+};
+
+function analyse(html) {
+  const blocked = [];
+  const allowed = [];
+  const sandboxed = [];
+
+  const record = (directive, url, verdict) => {
+    (verdict.allowed ? allowed : blocked).push({ directive, url, reason: verdict.reason });
+  };
+
+  // Subresources: script/style/img/frame/ESM imports.
+  for (const { kind, url } of extractResourceUrls(html)) {
+    record(kind, url, directiveAllows(kind, policy.get(kind), url));
+  }
+
+  // Network calls are evaluated against their real target URL rather than the
+  // mere presence of an API. connect-src is not 'none' — it lists four CDNs.
+  for (const { url } of extractNetworkUrls(html)) {
+    record("connect-src", url, directiveAllows("connect-src", policy.get("connect-src"), url));
+  }
+
+  // Form posts.
+  for (const m of html.matchAll(/<form[^>]+action=["']([^"']+)["']/gi)) {
+    const action = m[1];
+    if (action && action !== "#") {
+      record("form-action", action, directiveAllows("form-action", policy.get("form-action"), action));
     }
   }
 
-  // Link/style href (stylesheets)
-  const linkHrefs = [...html.matchAll(/<link[^>]+href=["']([^"']+)["'][^>]*rel=["']stylesheet["']/gi)].map(m => m[1]);
-  const linkHrefs2 = [...html.matchAll(/<link[^>]+rel=["']stylesheet["'][^>]+href=["']([^"']+)["']/gi)].map(m => m[1]);
-  for (const href of [...new Set([...linkHrefs, ...linkHrefs2])]) {
-    if (href.startsWith('http')) {
-      if (!matchesAllowed(href, ALLOWED_STYLE_ORIGINS)) {
-        issues.push({ severity: 'BLOCK', directive: 'style-src', value: href, reason: 'Origin not in allowlist' });
-      } else {
-        notes.push({ severity: 'OK', directive: 'style-src', value: href });
-      }
-    }
+  // Structural directives with no URL to evaluate.
+  if (/<iframe/i.test(html)) {
+    blocked.push({
+      directive: "frame-src",
+      url: "<iframe> element",
+      reason: "frame-src 'none'",
+    });
   }
 
-  // ESM import URLs (type="module" script blocks)
-  const esmImports = [...html.matchAll(/import\s+[^'"]*['"](\bhttps?:\/\/[^'"]+)['"]/g)].map(m => m[1]);
-  for (const src of esmImports) {
-    if (!matchesAllowed(src, ALLOWED_SCRIPT_ORIGINS)) {
-      issues.push({ severity: 'BLOCK', directive: 'script-src (ESM)', value: src, reason: 'Origin not in allowlist' });
-    } else {
-      notes.push({ severity: 'OK', directive: 'script-src (ESM)', value: src });
-    }
-  }
-
-  // connect-src 'none': fetch / XMLHttpRequest / WebSocket
-  if (/\bfetch\s*\(/.test(html))
-    issues.push({ severity: 'BLOCK', directive: 'connect-src', value: 'fetch()', reason: "connect-src 'none'" });
-  if (/new\s+XMLHttpRequest/.test(html))
-    issues.push({ severity: 'BLOCK', directive: 'connect-src', value: 'XMLHttpRequest', reason: "connect-src 'none'" });
-  if (/new\s+WebSocket/.test(html))
-    issues.push({ severity: 'BLOCK', directive: 'connect-src', value: 'WebSocket', reason: "connect-src 'none'" });
-  if (/\baxios\b/.test(html) && scriptSrcs.some(s => s.includes('axios')))
-    issues.push({ severity: 'BLOCK', directive: 'connect-src', value: 'axios HTTP', reason: "connect-src 'none'" });
-
-  // frame-src 'none': nested <iframe>
-  if (/<iframe/i.test(html))
-    issues.push({ severity: 'BLOCK', directive: 'frame-src', value: '<iframe>', reason: "frame-src 'none'" });
-
-  // form-action 'none': <form action="...">
-  const formActions = [...html.matchAll(/<form[^>]+action=["']([^"']+)["']/gi)].map(m => m[1]);
-  for (const action of formActions) {
-    if (action && action !== '#') {
-      issues.push({ severity: 'BLOCK', directive: 'form-action', value: action, reason: "form-action 'none'" });
-    }
-  }
-
-  // Sandbox blocks (not CSP, but iframe sandbox restriction)
-  for (const api of SANDBOX_BLOCKS) {
+  for (const [api, reason] of Object.entries(SANDBOX_BLOCKS)) {
     if (html.includes(api)) {
-      issues.push({ severity: 'SANDBOX', directive: 'sandbox', value: api, reason: 'Blocked: no allow-same-origin' });
+      sandboxed.push({ api, reason });
     }
   }
 
-  return { issues, notes };
+  return { blocked, allowed, sandboxed };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
-const files = readdirSync(FIXTURES_DIR).filter(f => f.endsWith('.html')).sort();
+const files = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".html")).sort();
 
-let totalPass = 0, totalWarn = 0, totalFail = 0;
+let totalPass = 0;
+let totalWarn = 0;
+let totalFail = 0;
 
-console.log('\n╔══════════════════════════════════════════════════════════════════╗');
-console.log('║         html-docs — CSP Static Analysis Report                  ║');
-console.log('╚══════════════════════════════════════════════════════════════════╝\n');
+console.log("\n╔══════════════════════════════════════════════════════════════════╗");
+console.log("║         html-docs — CSP Static Analysis Report                  ║");
+console.log("╚══════════════════════════════════════════════════════════════════╝");
+console.log(`\n  Policy: ${RAW_CSP}\n`);
 
 for (const file of files) {
-  const html = readFileSync(join(FIXTURES_DIR, file), 'utf8');
-  const { issues, notes } = analyse(html, file);
+  const html = readFileSync(join(FIXTURES_DIR, file), "utf8");
+  const { blocked, allowed, sandboxed } = analyse(html);
 
-  const blocks   = issues.filter(i => i.severity === 'BLOCK');
-  const sandboxed = issues.filter(i => i.severity === 'SANDBOX');
-  const status = blocks.length > 0 ? '❌ FAIL' : sandboxed.length > 0 ? '⚠️  WARN' : '✅ PASS';
-
-  if (blocks.length > 0) totalFail++;
-  else if (sandboxed.length > 0) totalWarn++;
+  const status = blocked.length ? "❌ FAIL" : sandboxed.length ? "⚠️  WARN" : "✅ PASS";
+  if (blocked.length) totalFail++;
+  else if (sandboxed.length) totalWarn++;
   else totalPass++;
 
   console.log(`${status}  ${file}`);
 
-  for (const n of notes)
-    console.log(`       ✓ [${n.directive}] ${n.value}`);
-
-  for (const issue of issues) {
-    const prefix = issue.severity === 'SANDBOX' ? '  ⚠️ ' : '  🚫';
-    console.log(`${prefix} [${issue.directive}] ${issue.value}  →  ${issue.reason}`);
+  for (const a of allowed) console.log(`       ✓ [${a.directive}] ${a.url}`);
+  for (const b of blocked) console.log(`  🚫 [${b.directive}] ${b.url}  →  ${b.reason}`);
+  for (const s of sandboxed) console.log(`  ⚠️  [sandbox] ${s.api}  →  blocked: ${s.reason}`);
+  if (!allowed.length && !blocked.length && !sandboxed.length) {
+    console.log("       (no external resources)");
   }
-  if (issues.length === 0 && notes.length === 0)
-    console.log('       (no external resources)');
   console.log();
 }
 
-console.log('─────────────────────────────────────────────────────────────────');
+console.log("─────────────────────────────────────────────────────────────────");
 console.log(`  Fixtures: ${files.length}   ✅ Pass: ${totalPass}   ⚠️  Warn: ${totalWarn}   ❌ Fail: ${totalFail}`);
-console.log('─────────────────────────────────────────────────────────────────\n');
+console.log("─────────────────────────────────────────────────────────────────");
+console.log(
+  totalFail
+    ? `\n  ${totalFail} fixture(s) reference subresources the raw CSP policy blocks.\n`
+    : "\n  No fixture references a blocked subresource.\n",
+);
+
+// Gate: a fixture that reaches for a blocked resource is a real finding.
+process.exit(totalFail > 0 ? 1 : 0);
