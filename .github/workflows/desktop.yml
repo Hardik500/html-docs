@@ -31,6 +31,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Repeated from the CI workflow on purpose: a packaged installer should only
+      # be produced from a tree that passes its own gates, and desktop.yml can run
+      # on a push where CI was skipped or still in flight.
+      - run: node test/csp-check.mjs
       - run: npm test
       - run: npm run typecheck
       - run: npm run desktop:dist

@@ -118,9 +118,19 @@ Open [http://localhost:5173](http://localhost:5173).
 | `npm start` | Run the production build from `build/server/index.js` |
 | `npm test` | Run the Vitest suite once |
 | `npm run typecheck` | Generate React Router types and run TypeScript |
+| `npm run copy:monaco` | Re-copy the Monaco editor assets into `public/monaco` (also runs automatically before `dev` and `build`) |
 | `npm run desktop:dev` | Build the web app and launch the Electron desktop client |
 | `npm run desktop:dist` | Build the desktop installer for the current platform |
 | `npm run desktop:verify` | Verify the packaged Electron archive and runtime configuration |
+
+### Self-hosted Monaco
+
+The code editor is served from this app's own origin at `/monaco/vs`, not from
+cdn.jsdelivr.net. The AMD assets are copied out of the installed
+`monaco-editor` package by `scripts/copy-monaco.mjs` on every `dev` and `build`,
+so the served version always matches the dependency. `public/monaco/` is a
+generated, gitignored directory — do not hand-edit it, and do not delete it
+without re-running the build.
 
 ## Desktop app
 
@@ -284,7 +294,8 @@ Key routes:
 | `/mcp` | Authenticated remote MCP endpoint |
 | `/d/:docId/edit` | Document editor |
 | `/d/:docId/:tabSlug` | Public document viewer |
-| `/raw/:docId/:tabSlug` | Sandboxed source rendered for the viewer |
+| `/raw/:docId/:tabSlug` | Sandboxed source rendered for the viewer (public, by design) |
+| `/thumb/:docId/:tabSlug` | Owner-only dashboard thumbnail; served as a URL so thumbnails lazy-load instead of being inlined into the dashboard |
 | `/download/:docId/:tabSlug` | Export endpoint |
 | `/healthz` | Health check |
 
@@ -296,9 +307,15 @@ npm run typecheck
 node test/csp-check.mjs
 ```
 
-The Vitest suite covers the configured unit and integration behavior, including conversion, limits, auth, local database, document, and desktop-sync areas.
+The Vitest suite covers the configured unit and integration behavior, including conversion, limits, auth, local database, document, and desktop-sync areas. It also includes the Google Docs content tests and the app-shell header tests.
 
-`test/csp-check.mjs` statically analyses HTML fixtures against the real `RAW_CSP` policy imported from `app/lib/csp.server.ts`. It is not part of `npm test`, but it does exit non-zero when a fixture references a subresource the policy blocks, so it can be used as a gate. It remains static analysis and does not replace browser verification.
+`test/csp-check.mjs` statically analyses HTML fixtures against the real `RAW_CSP` policy imported from `app/lib/csp.server.ts`. It is a gate, and it is deliberately not part of `npm test`.
+
+Each fixture declares what it expects with an HTML marker — `<!-- csp-expect: blocked -->` or `<!-- csp-expect: allowed -->` (the default) — and the check runs in both directions. An `allowed` fixture fails if anything it references is blocked. A `blocked` fixture fails if anything it references becomes *allowed*, which is what catches a host-matching bypass, and also if nothing it references is blocked any more, which catches a fixture silently decaying into a no-op. A malformed marker is reported as an error rather than defaulting to `allowed`.
+
+It remains static analysis, so verify the real response headers and browser enforcement as well; `AGENTS.md` lists the surfaces to cover.
+
+`test/app-shell-headers.test.ts` covers the app-shell security headers: that `app/root.tsx` applies them through a `headers` export rather than a loader `Response` (which React Router discards on a UI route), that the session-refresh `Set-Cookie` still passes through, that HSTS is production-only, and that no shell surface uses `<embed>` or `<object>` under `object-src 'none'`.
 
 To verify the `/raw` isolation boundary in a real browser:
 
@@ -307,6 +324,15 @@ node scripts/verify-raw-isolation.mjs <origin> <docId> <tabSlug>
 ```
 
 No browser E2E suite is currently configured beyond this targeted check.
+
+## Continuous integration
+
+| Workflow | Triggers | Runs |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | every push to `main`, every pull request, manual dispatch | `npm ci`, the CSP gate, `npm test`, `npm run typecheck`, `npm run build`, and a check that the self-hosted editor assets reached `build/client` |
+| `.github/workflows/desktop.yml` | pushes to `main` touching app, electron, db, packaging, or workflow files; manual dispatch | the same gates, then `desktop:dist` and `desktop:verify` on Linux, macOS, and Windows |
+
+No step reads a `.env`, so a check that needs real credentials fails in CI rather than passing quietly.
 
 ## Deployment
 

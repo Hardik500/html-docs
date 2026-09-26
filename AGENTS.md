@@ -22,12 +22,18 @@ npm test                  # Vitest suite
 npm run typecheck         # Generate React Router types, then run strict TypeScript
 npm run build             # Build client and SSR server into build/
 npm start                 # Serve an existing production build
+npm run copy:monaco       # Re-copy the Monaco editor assets into public/monaco
 npm run desktop:dev       # Build web app and launch Electron development client
 npm run desktop:dist      # Build desktop package for the current platform
 npm run desktop:verify    # Verify the packaged Electron archive/runtime config
 ```
 
 There is currently no lint script, formatter script, or separate browser-preview command. Do not claim or invent one. Use `npm run typecheck`, targeted tests, and the nearest existing style as the available static checks.
+
+`npm run dev` and `npm run build` both run `scripts/copy-monaco.mjs` first. It copies the AMD assets out of the installed `monaco-editor` package into the gitignored `public/monaco/`, which the editor loads from `/monaco/vs` via `loader.config()` in `app/components/Editor.tsx`. This is deliberate: the loader previously fetched ~1 MB across 14 requests from cdn.jsdelivr.net, putting a third-party DNS + TLS handshake on the critical path of opening a document. Two things to preserve:
+
+- Import `loader` from `@monaco-editor/react`, not from `@monaco-editor/loader` directly. Under SSR the direct import resolves to the CommonJS build, whose default export is an object, so `loader.config` is undefined and the edit route fails SSR with HTTP 500.
+- Do not delete `public/monaco/` without re-running the build; nothing regenerates it at runtime.
 
 When adding or upgrading dependencies, use npm so `package-lock.json` is updated correctly. Use `npm ci` for clean/reproducible installs.
 
@@ -52,12 +58,38 @@ electron/
   preload.cjs       Narrow Electron bridge
   sync-manager.cjs  Desktop authentication, token storage, and sync
 test/               Vitest tests, fixtures, and manual CSP analyzer
-public/             Static assets
+public/             Static assets (public/monaco/ is generated — see below)
 ```
 
 `app/routes.ts` is the route registry; keep it synchronized with route files. Server-only auth, database, CSP, rate-limit, and sensitive conversion code belongs in `.server.ts` modules and must not be imported into client bundles. `~/*` resolves to `app/*`.
 
 Use strict TypeScript, type-only imports where required by `verbatimModuleSyntax`, React function components, Tailwind utilities, and existing theme tokens in `app/app.css`. Follow neighboring files for export style and formatting; formatting is not mechanically enforced. React hooks must remain unconditional; do not copy the existing PDF early-return pattern in `PreviewIframe.tsx`, and fix that transition safely when touching it.
+
+## Database Round Trips
+
+The hosted database is remote, so **statement count on a request path is latency**. A single `SELECT 1` against the hosted pooler measured ~194 ms round trip from a European client (~224 ms TCP connect), which is 3-4x a same-region round trip. Every extra statement on a hot path is a user-visible stall.
+
+Rules that follow from this:
+
+- Issue independent queries with `Promise.all`, never sequentially. Both document loaders and the save action's pre-flight checks already do this.
+- Never loop a statement per row. The save action batches tab inserts/updates/deletes through `UNNEST(...)` so it costs a constant ~7 statements whether the document has 1 tab or 20. Keep it that way: a per-tab loop here costs ~200 ms per tab per autosave.
+- Fold related writes into one statement rather than two round trips. `recordDocumentChange()` in `app/lib/sync.server.ts` bumps the revision and appends the sync-feed row in a single data-modifying CTE, and optionally folds in a title update.
+- `withTransaction()` still issues an explicit `BEGIN`/`COMMIT`; that is two unavoidable round trips. Do not try to remove them by giving up the row lock or the revision guard.
+
+`PERF_LOG=1` makes `app/lib/perf.server.ts` emit one parseable line per request, e.g. `[perf] edit auth=2ms q_doc=11ms total=13ms`. Use it to confirm a change actually reduced work, and prefer counting statements (for example with `pg_stat_statements`) over inferring it from timings.
+
+## Document Content Types and Google Docs
+
+Per-tab content is HTML, Markdown, PDF, or TipTap `doc`. `app/lib/doc.ts` documents that a `doc` tab holds an **HTML fragment**, and `validateTabContent()` now rejects a complete document for `contentType: "doc"` with a message pointing the caller at `"html"`, because `docToHtml()` would otherwise nest a second `<html>` inside `<body>`.
+
+`app/lib/googleDocs.ts` normalizes Google Docs, Sheets, and Word export markup on the **agent write path only** (`prepareAgentTabContent()` in `app/lib/document-input.ts`, used by `create_document`, `update_document`, and `update_tab`): the `<b id="docs-internal-guid-…">` wrapper is removed, presentational inline CSS is dropped, and `font-weight`/`font-style`/`text-decoration` are promoted to `<strong>`/`<em>`/`<u>`. It is a no-op for content that is not Google-shaped, and it recovers a Webpage export's `<title>` for use as the document and tab name.
+
+Two deliberate limits, both worth preserving:
+
+- It is **not** applied to content typed in the web editor. Authored HTML must never be rewritten behind the user's back, so `validateSaveTabs()` is left alone and the MCP layer adapts its `content`/`contentType` arguments to the validator's `html`/`content_type` shape.
+- It does **not** unwrap a full HTML document. Full documents render correctly in the preview and at `/raw`; only the `doc` content type is broken by them, and that is rejected at validation time instead.
+
+The MCP tool descriptions in `app/routes/mcp.ts` document the `contentType` contract (`CONTENT_TYPE_GUIDE`). Keep that guidance in sync with the validators; an agent that has to guess produces a document that looks fine in the editor and is broken on export.
 
 ## Databases and Migrations
 
@@ -85,11 +117,22 @@ User-authored HTML is executable content by design; the application does not con
 - Landing/editor previews use `app/components/PreviewIframe.tsx` and must remain sandboxed without `allow-same-origin` unless a reviewed security design explicitly changes that model.
 - The public viewer in `app/routes/d.$docId.$tabSlug.tsx` has its own sandboxed iframe that loads `/raw/:docId/:tabSlug`; do not assume it inherits the editor's injected meta CSP.
 - `/raw/:docId/:tabSlug` returns authored HTML as a top-level response in the application origin. It is isolated by a `sandbox allow-scripts` directive in `RAW_CSP` with no `allow-same-origin`, so the document loads in an opaque origin. This was verified in a real browser under direct navigation: `window.origin` is `null`, `document.cookie` throws `SecurityError`, `localStorage`/`sessionStorage` throw, and a same-origin `fetch` is refused by `connect-src`. Re-run `node scripts/verify-raw-isolation.mjs <origin> <docId> <tabSlug>` after changing `RAW_CSP`, the `sandbox` flags, or the `/raw` route.
-- Dashboard thumbnails use a separate `srcDoc`/sandbox path in `app/routes/dashboard.tsx`. Do not assume they receive the same CSP as `PreviewIframe`; keep this surface covered when policies change.
+- Dashboard thumbnails are served by `app/routes/thumb.$docId.$tabSlug.tsx` and framed with `sandbox="allow-scripts"`, which gives them the same opaque origin the old `srcDoc` version had. The difference is that the policy now arrives as a real `RAW_CSP` response header rather than being inherited from the app shell, so the frame is sandboxed by `RAW_CSP` and not by `APP_CSP`. That route is **owner-only** — unlike `/raw`, which is public because that is how shared links work — so do not relax it into a second public read surface. Its content is a body-truncated slice of the first tab, converted for its content type exactly as `/raw` does. `test/thumb-route.test.ts` covers the auth, ownership, content-type, PDF, and CSP behaviour; `loading="lazy"` only works because the HTML is served from a URL instead of inlined.
 - TipTap document tabs intentionally render structured rich-text through `DocEditor`/`EditorContent` in the application shell. This is a separate editor boundary, not raw HTML preview. Review TipTap parsing/rendering, pasted or imported content, links, images, and allowed attributes; never replace it with unrestricted raw-HTML injection.
 - Never move the raw HTML/Markdown preview path into the privileged application shell.
 
-`app/lib/csp.server.ts` is the single CSP policy source. `test/csp-check.mjs` imports `RAW_CSP` from it rather than keeping a hand-copied mirror, so the two cannot drift; matching semantics live in `test/csp-policy.mjs` and are unit-tested against the real policy in `test/csp-policy.test.ts`. The analyser matches hosts exactly, so a lookalike such as `https://cdnjs.cloudflare.com.evil.test` is rejected rather than treated as allowlisted, and it evaluates the actual target URL of each network call instead of assuming `connect-src` is `'none'`. It exits non-zero when a fixture references a blocked subresource, so it can gate CI.
+`app/lib/csp.server.ts` is the single CSP policy source. `test/csp-check.mjs` imports `RAW_CSP` from it rather than keeping a hand-copied mirror, so the two cannot drift; matching semantics live in `test/csp-policy.mjs` and are unit-tested against the real policy in `test/csp-policy.test.ts`. The analyser matches hosts exactly, so a lookalike such as `https://cdnjs.cloudflare.com.evil.test` is rejected rather than treated as allowlisted, and it evaluates the actual target URL of each network call instead of assuming `connect-src` is `'none'`.
+
+`node test/csp-check.mjs` is a gate: every fixture must match the expectation it declares, in **both** directions, and it exits non-zero otherwise.
+
+- A fixture declares its intent with an HTML marker: `<!-- csp-expect: blocked -->` or `<!-- csp-expect: allowed -->` (the default for a new fixture).
+- An `allowed` fixture fails if anything it references is blocked.
+- A `blocked` fixture fails if anything it references is *allowed* (a bypass regression), and also if nothing it references is blocked (the fixture has silently decayed into a no-op).
+- A malformed marker value is an error, not a silent fallback to `allowed`.
+
+Treat that exit code as meaningful. It used to be permanently red, because every blocked finding counted as a failure — which is the same as having no gate at all. Give a new fixture the marker matching its intent, and expect the negative fixtures to object if you relax the policy.
+
+The app-shell headers in `app/root.tsx` are applied through a `headers` export, because React Router only honours loader response headers for resource routes; returning a `Response` from that loader silently discarded them. Verify with `curl -I <origin>/ | grep -i content-security-policy` — if that grep comes up empty, the policy is not being sent. `APP_CSP` sets `object-src 'none'`, so no shell surface may use `<embed>` or `<object>`; that is why PDFs preview through a same-origin `<iframe src="/raw/...">`. `test/app-shell-headers.test.ts` enforces both.
 
 The analyser is still static only: it cannot validate real response headers or browser enforcement. Keep per-surface coverage for the editor, the public viewer, direct `/raw`, and dashboard thumbnails, and use `scripts/verify-raw-isolation.mjs` for the `/raw` boundary.
 
@@ -113,6 +156,7 @@ Do not hand-edit:
 - `release/`
 - `electron/runtime-config.json`
 - `package-lock.json`
+- `public/monaco/` (gitignored; regenerated by `scripts/copy-monaco.mjs` on `predev`/`prebuild`)
 
 The desktop PGlite database lives under Electron user-data storage outside the repository. Do not edit it during normal development.
 
@@ -147,7 +191,7 @@ CSP/preview changes also require:
 node test/csp-check.mjs
 ```
 
-This analyser exits non-zero when a fixture references a blocked subresource, so treat that exit code as a gate. It is still static analysis, so verify the actual response policy and every rendering path. Cover the landing/editor `PreviewIframe`, the public-viewer iframe loading `/raw`, dashboard thumbnails, direct top-level navigation to `/raw/:docId/:tabSlug`, and TipTap rich-text paste/import/rendering behavior.
+This analyser exits non-zero when a fixture does not match its declared expectation, so treat that exit code as a gate. It is still static analysis, so verify the actual response headers (`curl -I`) and browser enforcement for every rendering path. Cover the landing/editor `PreviewIframe`, the public-viewer iframe loading `/raw`, the owner-only `/thumb` dashboard thumbnails, direct top-level navigation to `/raw/:docId/:tabSlug`, the PDF previews on both the editor and the public viewer, and TipTap rich-text paste/import/rendering behavior.
 
 For the direct-navigation `/raw` boundary, drive a real browser:
 
@@ -162,6 +206,17 @@ There is no configured browser E2E suite, so use proportionate browser verificat
 `npm run desktop:verify` only performs limited package/runtime-config checks; it does not prove Electron isolation, preload safety, navigation restrictions, or runtime behavior. Desktop changes also need a real `npm run desktop:dev` or packaged-app smoke test when feasible.
 
 A task is not complete merely because code compiles. Confirm the requested behavior, run the relevant checks, and report any environment-dependent checks that could not be executed.
+
+## Continuous Integration
+
+Two workflows with different purposes:
+
+- `.github/workflows/ci.yml` — every push to `main`, every pull request, and manual dispatch. Fast: `npm ci`, the CSP gate, `npm test`, `npm run typecheck`, `npm run build`, then a check that `build/client/monaco/vs/loader.js` exists. That last step matters because a green build that ships no editor assets still renders a blank editor pane.
+- `.github/workflows/desktop.yml` — packaging only, path-filtered, across Linux/macOS/Windows. It re-runs `csp-check`, `npm test`, and `npm run typecheck` itself rather than depending on CI, so an installer is never produced from an unverified tree.
+
+The CSP gate is a separate named step in both, deliberately not folded into `npm test`: its exit code is the signal, and a step that always reports success would hide it. If you add a check that must block a merge, put it in `ci.yml` as its own step and run it locally first. No step reads a `.env`, so a check that needs real credentials will fail in CI rather than quietly pass — keep it that way.
+
+`PreviewIframe` is imported **statically** by both `_index.tsx` and `d.$docId.edit.tsx`. Do not make it `lazy()`: it renders immediately on both routes, so splitting it added a round trip to the critical path without deferring anything, and Vite warns `[INEFFECTIVE_DYNAMIC_IMPORT]` because `_index.tsx` already imports it statically. Measured over 5 cold runs each, the static import moved the preview from a 240 ms median to 52 ms with identical request count and bytes. `Editor` (Monaco) and `DocEditor` (TipTap) are genuinely lazy and should stay that way.
 
 ## Product and Documentation Accuracy
 
