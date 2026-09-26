@@ -80,3 +80,39 @@ jobs:
       # that ships no Monaco would still render a blank editor pane.
       - name: Verify self-hosted editor assets are in the build
         run: test -f build/client/monaco/vs/loader.js
+
+  # The suite was only ever run on Linux, and that hid a real cross-platform bug
+  # until after merge: test/gdocs-content.test.ts built its repo path with
+  # `new URL("..", import.meta.url).pathname`, which is a POSIX-shaped "/D:/a/..."
+  # on Windows, so win32.join produced "D:\D:\a\..." and the whole file died at
+  # import with ENOENT. ubuntu-latest passed 272/272 the whole time.
+  #
+  # It reached main because desktop.yml -- the only workflow with a Windows
+  # runner -- fires on push to main and is path-filtered to app/**, electron/**,
+  # db/**, package.json and scripts/**. A test-only change never triggered it, so
+  # a Windows-only test failure could not surface on a pull request at all.
+  #
+  # This job is deliberately narrow: npm ci and npm test only. Typecheck and build
+  # already run on Windows in desktop.yml, and duplicating them here would double
+  # the cost of every PR to re-verify the same thing.
+  verify-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # No Chromium download here on purpose: it is ~100MB per run and the
+      # windows-latest image has no Playwright cache, so
+      # test/gdocs-tiptap.test.ts reports as skipped on this runner. That file
+      # needs a real DOM, so it cannot run without a browser, and the `verify`
+      # job above is where it is actually exercised. This is stated rather than
+      # left implicit so a future reader does not assume Windows covers it.
+      - name: Unit and integration tests
+        run: npm test
