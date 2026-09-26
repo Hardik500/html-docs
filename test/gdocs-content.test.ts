@@ -34,6 +34,20 @@ import {
 // "D:\D:\a\repo\..." that made this file fail with ENOENT on windows-latest.
 // resolve() also drops the trailing separator the URL form leaves behind.
 const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
+
+/**
+ * Reads a source file for assertion against its text.
+ *
+ * This repo has no .gitattributes, so a Windows checkout has CRLF endings. Any
+ * assertion pinning a literal "\n" against source text therefore matches on
+ * Linux and fails on Windows — which is how
+ * "const CONTENT_TYPE_GUIDE = ([\s\S]*?);\n\nconst tabWriteSchema" silently
+ * stopped matching, leaving the captured group empty and the test reporting
+ * `expected '' to match /html/`. Normalising at the single point of read keeps
+ * these assertions about content rather than about line endings, which is what
+ * they are actually asserting. The verify-windows job in CI is what surfaced it.
+ */
+const readSource = (path: string) => readFileSync(path, "utf8").replace(/\r\n/g, "\n");
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 const countOf = (s: string, re: RegExp) => (s.match(re) ?? []).length;
 
@@ -119,7 +133,7 @@ describe("(a) MCP contentType semantics for Google Docs HTML", () => {
     // tabWriteSchema previously took `html` + `content_type` while the other two
     // write tools took `content` + `contentType`, so an agent reusing the
     // create_document convention got a content error instead of a schema error.
-    const mcp = readFileSync(join(REPO, "app/routes/mcp.ts"), "utf8");
+    const mcp = readSource(join(REPO, "app/routes/mcp.ts"));
     const schema = /const tabWriteSchema = z\.object\(\{([\s\S]*?)\}\);/.exec(mcp)?.[1] ?? "";
     expect(schema).toMatch(/content: z\.string\(\)\.optional\(\)/);
     expect(schema).toMatch(/contentType: contentTypeSchema\.optional\(\)/);
@@ -170,12 +184,12 @@ describe("(b) docToHtml() with a full Google Docs Webpage export", () => {
   });
 
   it("a doc tab never reaches PreviewIframe in the editor, so this only affects /raw + downloads", () => {
-    const edit = readFileSync(join(REPO, "app/routes/d.$docId.edit.tsx"), "utf8");
+    const edit = readSource(join(REPO, "app/routes/d.$docId.edit.tsx"));
     // The preview pane is skipped for doc tabs; DocEditor is the only surface.
     expect(edit).toMatch(/activeTab\?\.content_type !== "doc"/);
     // /raw and the download route are the paths that call docToHtml().
-    expect(readFileSync(join(REPO, "app/routes/raw.$docId.$tabSlug.tsx"), "utf8")).toContain("docToHtml");
-    const download = readFileSync(join(REPO, "app/routes/download.$docId.$tabSlug.tsx"), "utf8");
+    expect(readSource(join(REPO, "app/routes/raw.$docId.$tabSlug.tsx"))).toContain("docToHtml");
+    const download = readSource(join(REPO, "app/routes/download.$docId.$tabSlug.tsx"));
     expect(download).toContain("docToHtml");
     // ...and the .html download gets NO style/CSP injection at all.
     expect(download).toMatch(/if \(format === "html"\) \{[\s\S]{0,200}new Response\(htmlDoc/);
@@ -346,7 +360,7 @@ describe("(f) no paste handler, clipboard reader or HTML sanitizer exists", () =
         const p = join(dir, entry);
         if (statSync(p).isDirectory()) { walk(p); continue; }
         if (!/\.(ts|tsx|cjs|mjs|js|jsx)$/.test(entry)) continue;
-        const src = readFileSync(p, "utf8");
+        const src = readSource(p);
         for (const re of PATTERNS) if (re.test(src)) offenders.push(`${p} :: ${re}`);
       }
     };
@@ -356,7 +370,7 @@ describe("(f) no paste handler, clipboard reader or HTML sanitizer exists", () =
   });
 
   it("no sanitizer dependency is installed", () => {
-    const pkg = JSON.parse(readFileSync(join(REPO, "package.json"), "utf8"));
+    const pkg = JSON.parse(readSource(join(REPO, "package.json")));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const names = Object.keys(deps).map((n) => n.toLowerCase());
     expect(names.filter((n) => /purify|sanitize|xss|rehype|jsdom|happy-dom|linkedom/.test(n)))
@@ -364,7 +378,7 @@ describe("(f) no paste handler, clipboard reader or HTML sanitizer exists", () =
   });
 
   it("the only paste- and sanitizer-adjacent code is a Monaco option and a comment", () => {
-    const editor = readFileSync(join(REPO, "app/components/Editor.tsx"), "utf8");
+    const editor = readSource(join(REPO, "app/components/Editor.tsx"));
     // The single match in all of app/ for anything paste-shaped: Monaco's
     // formatOnPaste, which re-indents pasted source but never sanitizes it.
     const pasteLines = editor.split("\n").filter((l) => /onPaste|clipboard|sanitiz/i.test(l));
@@ -372,13 +386,13 @@ describe("(f) no paste handler, clipboard reader or HTML sanitizer exists", () =
     expect(editor).not.toMatch(/\bonPaste:|handlePaste|clipboardData|addEventListener\(\s*["']paste/i);
 
     // The other match is a comment in supabase.server.ts, not code.
-    const supabase = readFileSync(join(REPO, "app/lib/supabase.server.ts"), "utf8");
+    const supabase = readSource(join(REPO, "app/lib/supabase.server.ts"));
     expect([...supabase.matchAll(/^.*\bxss\b.*$/gim)].map((m) => m[0].trim()))
       .toHaveLength(1);
   });
 
   it("TipTap DocEditor registers no transformPasted / paste rules of its own", () => {
-    const docEditor = readFileSync(join(REPO, "app/components/DocEditor.tsx"), "utf8");
+    const docEditor = readSource(join(REPO, "app/components/DocEditor.tsx"));
     expect(docEditor).not.toMatch(/transformPasted|addPasteRules|clipboardTextParser/);
     // Only StarterKit defaults: extensions + onUpdate -> editor.getHTML().
     expect(docEditor).toContain("StarterKit,");
@@ -391,7 +405,7 @@ describe("(f) no paste handler, clipboard reader or HTML sanitizer exists", () =
 // ────────────────────────────────────────────────────────────────────────────
 
 describe("(h) MCP tool description text", () => {
-  const mcp = readFileSync(join(REPO, "app/routes/mcp.ts"), "utf8");
+  const mcp = readSource(join(REPO, "app/routes/mcp.ts"));
 
   it("documents the contentType contract on every tool that accepts tab content", () => {
     const guide = /const CONTENT_TYPE_GUIDE =([\s\S]*?);\n\nconst tabWriteSchema/.exec(mcp)?.[1] ?? "";
@@ -425,10 +439,10 @@ describe("(h) MCP tool description text", () => {
 
   it("keeps the enum that backs the documented contract", () => {
     expect(mcp).toContain('const contentTypeSchema = z.enum(["html", "markdown", "pdf", "doc"]);');
-    const doc = readFileSync(join(REPO, "app/lib/doc.ts"), "utf8");
+    const doc = readSource(join(REPO, "app/lib/doc.ts"));
     expect(doc).toContain("Input must be an HTML fragment, not a full document");
     // The same contract is now also enforced, not just documented.
-    const input = readFileSync(join(REPO, "app/lib/document-input.ts"), "utf8");
+    const input = readSource(join(REPO, "app/lib/document-input.ts"));
     expect(input).toContain('contentType === "doc" && isFullHtmlDocument(value)');
   });
 });
