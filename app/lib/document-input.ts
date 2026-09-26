@@ -1,4 +1,5 @@
 import { maxBytesForType, type TabContentType } from "./limits";
+import { isFullHtmlDocument, normalizeGoogleHtml } from "./googleDocs";
 
 export const MAX_TABS = 20;
 const TAB_CONTENT_TYPES = new Set<TabContentType>(["html", "markdown", "pdf", "doc"]);
@@ -123,6 +124,15 @@ export function validateContentType(value: unknown): TabContentType {
 
 export function validateTabContent(value: unknown, contentType: TabContentType): string {
   if (typeof value !== "string") rejectWrite("Tab content is required");
+  // A `doc` tab is stored as a fragment and wrapped by docToHtml(), which would
+  // otherwise nest a second <html> inside <body>. Reject rather than silently
+  // unwrap, so the agent learns which content type to use.
+  if (contentType === "doc" && isFullHtmlDocument(value)) {
+    rejectWrite(
+      'A "doc" tab must contain an HTML fragment, not a complete document. ' +
+        "Store a Google Docs / Word / Sheets Webpage export with contentType \"html\" instead.",
+    );
+  }
   if (new TextEncoder().encode(value).length > maxBytesForType(contentType)) {
     rejectWrite("Tab exceeds its content limit", 413);
   }
@@ -150,6 +160,40 @@ export interface AgentTabInput {
   name: string;
   content: string;
   contentType: TabContentType;
+  /**
+   * A document title recovered from the content itself, currently only from a
+   * Google Docs/Sheets Webpage export's `<title>`. Used as the name fallback so
+   * an imported document is not left as "Untitled".
+   */
+  derivedName?: string;
+}
+
+/**
+ * Normalizes and validates the content of one agent-written tab.
+ *
+ * Google Docs, Google Sheets and Word exports arrive wrapped in
+ * `docs-internal-guid` markup with one styled `<span>` per formatting run. Left
+ * alone that wrapper is exported as unbalanced `**` by htmlToMarkdown(), the
+ * first keystroke in a `doc` tab makes TipTap silently rewrite the stored source,
+ * and a 300-paragraph document of ordinary text is rejected for exceeding the
+ * 500 KB per-tab limit. normalizeGoogleHtml() is a no-op for everything else.
+ *
+ * This is applied on the agent write path only. Content typed in the web editor
+ * is authored deliberately and must not be rewritten behind the user's back.
+ */
+export function prepareAgentTabContent(
+  value: unknown,
+  contentType: TabContentType,
+): { content: string; derivedName?: string } {
+  if (typeof value !== "string") rejectWrite("Tab content is required");
+  if (contentType !== "html" && contentType !== "doc") {
+    return { content: validateTabContent(value, contentType) };
+  }
+  const normalized = normalizeGoogleHtml(value);
+  return {
+    content: validateTabContent(normalized.html, contentType),
+    ...(normalized.title ? { derivedName: normalized.title } : {}),
+  };
 }
 
 /** Validates the `tabs` argument of a document-creation tool call. */
@@ -165,10 +209,12 @@ export function validateNewDocumentTabs(value: unknown): AgentTabInput[] {
     }
     const tab = rawTab as Record<string, unknown>;
     const contentType = validateContentType(tab.contentType);
+    const { content, derivedName } = prepareAgentTabContent(tab.content, contentType);
     return {
-      name: validateTabName(tab.name, "Untitled"),
-      content: validateTabContent(tab.content, contentType),
+      name: validateTabName(tab.name, derivedName ?? "Untitled"),
+      content,
       contentType,
+      ...(derivedName ? { derivedName } : {}),
     };
   });
 }

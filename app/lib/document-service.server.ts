@@ -3,13 +3,12 @@ import { newDocId, newEditToken, newTabId } from "./ids";
 import { dedupeSlug, slugify } from "./slug";
 import { recordDocumentChange } from "./sync.server";
 import { extractTitle, extractMarkdownTitle } from "./titleExtract";
-import { maxBytesForType } from "./limits";
 import {
   AgentWriteError,
+  prepareAgentTabContent,
   validateBaseRevision,
   validateContentType,
   validateNewDocumentTabs,
-  validateTabContent,
   validateTabName,
   type AgentTabInput,
   type SubmittedTab,
@@ -223,6 +222,7 @@ export async function createUserDocument(
   const tabs = validateNewDocumentTabs(input.tabs);
   const title = (typeof input.title === "string" ? input.title.trim() : "")
     .slice(0, 500)
+    || tabs[0].derivedName
     || tabs[0].name
     || "Untitled";
 
@@ -315,11 +315,8 @@ export async function updateUserDocument(
           404,
         );
       }
-      const html = tab.html ?? "";
-      if (new TextEncoder().encode(html).length > maxBytesForType(contentType)) {
-        throw new AgentWriteError("Tab exceeds its content limit", 413);
-      }
-      const name = tab.name || deriveTabName(html, contentType);
+      const { content: html, derivedName } = prepareAgentTabContent(tab.html ?? "", contentType);
+      const name = tab.name || derivedName || deriveTabName(html, contentType);
       await runQuery(
         `UPDATE tabs
             SET name = $1, position = $2, html = $3, content_type = $4,
@@ -386,14 +383,14 @@ export async function updateUserDocumentTab(
       ? (tab.content_type as "html" | "markdown" | "pdf" | "doc")
       : validateContentType(input.contentType);
     const content = input.content === undefined ? tab.html : input.content;
-    validateTabContent(content, contentType);
-    const name = validateTabName(input.name, tab.name);
+    const prepared = prepareAgentTabContent(content, contentType);
+    const name = validateTabName(input.name, prepared.derivedName ?? tab.name);
 
     await runQuery(
       `UPDATE tabs
           SET name = $1, html = $2, content_type = $3, updated_at = now(), version = version + 1
         WHERE id = $4 AND doc_id = $5`,
-      [name, content, contentType, tab.id, documentId],
+      [name, prepared.content, contentType, tab.id, documentId],
     );
 
     const revision = (await recordDocumentChange(runQuery, documentId, userId)) ?? currentRevision;
