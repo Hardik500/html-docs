@@ -35,3 +35,14 @@ export interface BrowserResult {
 export function runInBrowser(
   fixtures: Array<Record<string, unknown>>,
 ): BrowserResult[];
+
+/**
+ * Resolves a usable Chromium for the harness, or null when there is none.
+ *
+ * A test calls this to decide whether to skip. `runInBrowser` throws when no
+ * browser is found, which is correct for a genuine assertion failure but wrong
+ * for "this machine has no browser" — a fresh clone or a CI runner without one.
+ * Probing here keeps a missing browser an environment fact rather than a red
+ * suite.
+ */
+export function findChrome(): string | null;

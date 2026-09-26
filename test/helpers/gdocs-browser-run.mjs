@@ -20,15 +20,37 @@ import { join } from "node:path";
 
 const REPO = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
 
-function findChrome() {
+/**
+ * Resolves a usable Chromium, or null when there is none.
+ *
+ * Exported so a test can SKIP rather than fail when no browser is present.
+ * `runInBrowser` throws, which is right for a real assertion failure but wrong
+ * for "this machine has no browser": a fresh clone or a CI runner has no
+ * Playwright cache, and that is an environment fact, not a broken test.
+ *
+ * Both Playwright layouts are probed — the headless shell directory
+ * "chromium_headless_shell-…/chrome-headless-shell-linux64/" and the full
+ * browser directory "chromium-…/chrome-linux64/chrome" — because a machine may
+ * have installed either. `CHROME_PATH` overrides both.
+ */
+export function findChrome() {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   const cache = join(homedir(), ".cache", "ms-playwright");
   if (!existsSync(cache)) return null;
-  const hits = readdirSync(cache)
-    .filter((d) => d.startsWith("chromium_headless_shell"))
-    .map((d) => join(cache, d, "chrome-headless-shell-linux64", "chrome-headless-shell"))
-    .filter((p) => existsSync(p));
-  return hits[0] ?? null;
+  const layouts = [
+    ["chromium_headless_shell", "chrome-headless-shell-linux64", "chrome-headless-shell"],
+    ["chromium", "chrome-linux64", "chrome"],
+  ];
+  for (const [prefix, dir, binary] of layouts) {
+    const hit = readdirSync(cache)
+      .filter((d) => d.startsWith(prefix) && d !== prefix)
+      .sort()
+      .reverse()
+      .map((d) => join(cache, d, dir, binary))
+      .find((p) => existsSync(p));
+    if (hit) return hit;
+  }
+  return null;
 }
 
 const ENTRY_SOURCE = `

@@ -43,6 +43,16 @@ jobs:
 
       - run: npm ci
 
+      # test/gdocs-tiptap.test.ts round-trips Google Docs markup through the real
+      # TipTap extension set, and @tiptap/core cannot be exercised without a real
+      # DOM. It skips itself when no browser is present, so this step is about
+      # coverage rather than about the suite being able to pass — without it the
+      # 17 assertions in that file would silently never run here. Only the
+      # headless shell is downloaded, and nothing is added to package.json: the
+      # helper discovers it in the Playwright cache.
+      - name: Install headless Chromium for the TipTap round-trip test
+        run: npx --yes playwright@1.56.0 install --only-shell chromium
+
       # Content-Security-Policy gate. Every fixture must match the expectation it
       # declares, in both directions: an `allowed` fixture may not have anything
       # blocked, and a `blocked` fixture may not have anything newly allowed. That
