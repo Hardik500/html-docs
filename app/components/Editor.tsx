@@ -1,5 +1,22 @@
 import { useState, useEffect } from "react";
-import MonacoEditorRaw, { type OnChange, type OnMount } from "@monaco-editor/react";
+import MonacoEditorRaw, {
+  loader,
+  type OnChange,
+  type OnMount,
+} from "@monaco-editor/react";
+
+// Serve the editor from our own origin. Without this, @monaco-editor/react's
+// AMD loader pulls ~1 MB from cdn.jsdelivr.net across 14 cross-origin requests
+// before the editor is usable, adding a third-party DNS + TLS handshake to the
+// critical path of opening a document. The assets are copied from the installed
+// monaco-editor package into public/monaco by scripts/copy-monaco.mjs
+// (npm run prebuild / predev), so the version always matches the dependency.
+//
+// `loader` must be the instance @monaco-editor/react itself uses — it is
+// re-exported from there for exactly this purpose. Importing it from
+// "@monaco-editor/loader" directly resolves to the CommonJS build under SSR,
+// where the default export is an object and `loader.config` is undefined.
+loader.config({ paths: { vs: `${import.meta.env.BASE_URL}monaco/vs` } });
 
 interface EditorProps {
   value: string;

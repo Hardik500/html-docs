@@ -64,25 +64,33 @@ export async function recordDocumentChange(
   runQuery: QueryRunner,
   docId: string,
   ownerUserId: string | null,
+  title?: string,
 ): Promise<number | null> {
   if (isDesktopRuntime() || !ownerUserId) return null;
 
+  // Bump the revision and append the sync-feed row in ONE statement, and fold an
+  // optional title update into the same UPDATE. This runs on every save of every
+  // write path (web autosave, MCP tools, desktop sync push) against a remote
+  // database, so collapsing three round trips into one is the single biggest
+  // latency win available here. An owned document that does not exist (or is
+  // owned by someone else) makes `bumped` empty, so nothing is inserted and the
+  // function reports "no change" exactly as the two-statement version did.
   const result = await runQuery<{ revision: string }>(
-    `UPDATE docs
-        SET revision = revision + 1, last_activity_at = now()
-      WHERE id = $1 AND owner_user_id = $2
-      RETURNING revision`,
-    [docId, ownerUserId],
+    `WITH bumped AS (
+       UPDATE docs
+          SET title = COALESCE($3, title),
+              revision = revision + 1,
+              last_activity_at = now()
+        WHERE id = $1 AND owner_user_id = $2
+        RETURNING revision
+     )
+     INSERT INTO sync_changes (doc_id, owner_user_id, revision)
+     SELECT $1, $2, revision FROM bumped
+     RETURNING revision`,
+    [docId, ownerUserId, title ? title.slice(0, 500) : null],
   );
   if (!result.rows.length) return null;
-
-  const revision = Number(result.rows[0].revision);
-  await runQuery(
-    `INSERT INTO sync_changes (doc_id, owner_user_id, revision)
-     VALUES ($1, $2, $3)`,
-    [docId, ownerUserId, revision],
-  );
-  return revision;
+  return Number(result.rows[0].revision);
 }
 
 /** Marks a local document as needing a future cloud push. */

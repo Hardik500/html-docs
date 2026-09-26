@@ -1,0 +1,82 @@
+# Fast verification for every change.
+#
+# Separate from desktop.yml, which packages installers for three platforms. This
+# one exists to be cheap enough to run on every push and every pull request, so a
+# broken policy or a failed typecheck is caught before review rather than after
+# merge.
+#
+# The steps mirror the "Verification" section of AGENTS.md for general web and
+# route changes, plus the CSP gate, which is a separate command because it is not
+# part of `npm test`.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only is all this workflow needs; nothing here writes to the repository.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 22 resolves to the latest 22.x. Do not pin lower: csp-check.mjs
+      # imports app/lib/csp.server.ts directly and needs type stripping, which
+      # landed in Node 22.18. It degrades with a clear message rather than a
+      # confusing parse error.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # test/gdocs-tiptap.test.ts round-trips Google Docs markup through the real
+      # TipTap extension set, and @tiptap/core cannot be exercised without a real
+      # DOM. It skips itself when no browser is present, so this step is about
+      # coverage rather than about the suite being able to pass — without it the
+      # 17 assertions in that file would silently never run here. Only the
+      # headless shell is downloaded, and nothing is added to package.json: the
+      # helper discovers it in the Playwright cache.
+      - name: Install headless Chromium for the TipTap round-trip test
+        run: npx --yes playwright@1.56.0 install --only-shell chromium
+
+      # Content-Security-Policy gate. Every fixture must match the expectation it
+      # declares, in both directions: an `allowed` fixture may not have anything
+      # blocked, and a `blocked` fixture may not have anything newly allowed. That
+      # second half is what catches a host-matching bypass in the policy analyser,
+      # so this must stay a distinct step rather than being folded into a summary.
+      - name: CSP policy gate
+        run: node test/csp-check.mjs
+
+      # Includes the app-shell header tests, which assert that app/root.tsx
+      # delivers CSP through a `headers` export rather than a loader Response,
+      # and that no shell surface uses <embed>/<object> under `object-src 'none'`.
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      # Catches a broken build that tests and types would not. Also the step that
+      # exercises the prebuild hook, which copies the Monaco assets into
+      # public/monaco; if that copy breaks, the editor silently fails to load.
+      - name: Build
+        run: npm run build
+
+      # Prove the editor assets actually reached the client output. A green build
+      # that ships no Monaco would still render a blank editor pane.
+      - name: Verify self-hosted editor assets are in the build
+        run: test -f build/client/monaco/vs/loader.js

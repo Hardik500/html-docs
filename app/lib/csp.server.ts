@@ -2,6 +2,9 @@
  * CSP for the app shell (editor, viewer, dashboard).
  * Permissive on scripts/styles to accommodate Monaco editor (blob: workers,
  * unsafe-inline), but locks down fonts, frames, objects, and base-uri.
+ *
+ * This is the production policy, and `app/root.tsx` sends it on every document
+ * response. Keep the two in step when editing it here.
  */
 export const APP_CSP = [
   "default-src 'self'",
@@ -16,6 +19,20 @@ export const APP_CSP = [
   "base-uri 'self'",
   "frame-ancestors 'none'",
 ].join("; ");
+
+/**
+ * The policy for the current runtime.
+ *
+ * The dev server needs no relaxation: Vite's HMR socket is same-origin (CSP3
+ * `'self'` covers the `ws:` scheme on the same host and port) and the preamble
+ * it injects is covered by the existing `'unsafe-inline'` / `'unsafe-eval'`.
+ * Keep it that way — do not widen the production policy for a dev-only need. If
+ * dev does break, confirm it in a real browser first and add the narrowest
+ * directive that fixes it.
+ */
+export function appCsp(): string {
+  return APP_CSP;
+}
 
 /**
  * CSP for raw HTML iframe content — allows inline scripts/styles and

@@ -28,13 +28,24 @@ interface LoaderData {
 export async function loader({ params, request }: Route.LoaderArgs) {
   const { docId, tabSlug } = params;
 
-  const docResult = await query<{
-    id: string;
-    title: string;
-    edit_token: string;
-    owner_user_id: string | null;
-  }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1 AND deleted_at IS NULL", [
-    docId,
+  // None of these three depend on each other — the tab list and the session only
+  // need the id from the URL. Issuing them sequentially made every shared link
+  // pay three serial database round trips (~600ms against the hosted database);
+  // running them together reduces it to one.
+  const [docResult, tabsResult, userId] = await Promise.all([
+    query<{
+      id: string;
+      title: string;
+      edit_token: string;
+      owner_user_id: string | null;
+    }>("SELECT id, title, edit_token, owner_user_id FROM docs WHERE id = $1 AND deleted_at IS NULL", [
+      docId,
+    ]),
+    query<Tab>(
+      "SELECT id, slug, name, position, content_type FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
+      [docId]
+    ),
+    getUserId(request),
   ]);
 
   if (!docResult.rows.length) {
@@ -42,10 +53,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   }
   const doc = docResult.rows[0];
 
-  const tabsResult = await query<Tab>(
-    "SELECT id, slug, name, position, content_type FROM tabs WHERE doc_id = $1 ORDER BY position ASC",
-    [docId]
-  );
   const tabs = tabsResult.rows;
   const activeTab = tabs.find((t) => t.slug === tabSlug);
 
@@ -59,7 +66,6 @@ export async function loader({ params, request }: Route.LoaderArgs) {
     [docId]
   ).catch(() => {});
 
-  const userId = await getUserId(request);
   const tokenFromCookie =
     request.headers
       .get("cookie")
@@ -162,11 +168,14 @@ export default function ViewerPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden bg-canvas">
         {activeTab.content_type === "pdf" ? (
-          <embed
+          // An <iframe>, not an <embed>: the app shell's CSP sets
+          // `object-src 'none'`, which blocks <embed>/<object>. /raw already
+          // serves PDF tabs as application/pdf, and an iframe is allowed by
+          // `frame-src 'self'`. See PdfPreview in PreviewIframe.tsx.
+          <iframe
             key={activeTab.slug}
             src={`/raw/${doc.id}/${activeTab.slug}`}
-            type="application/pdf"
-            className="w-full h-full border-0"
+            className="h-full w-full border-0"
             title={activeTab.name}
           />
         ) : (

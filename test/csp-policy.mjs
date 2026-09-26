@@ -173,3 +173,96 @@ export function extractResourceUrls(html) {
   }
   return out.filter((entry) => /^https?:|^data:/i.test(entry.url));
 }
+
+// ─── Fixture expectations ─────────────────────────────────────────────────────
+//
+// The analyser reports which subresources the policy blocks. That is a *report*,
+// not a verdict: much of the fixture set exists precisely to assert that the
+// policy blocks something. Treating every blocked finding as a failure made the
+// gate permanently red, which is the same as having no gate at all.
+//
+// So each fixture declares what it expects and the gate checks that expectation
+// in both directions: a positive fixture must have nothing blocked, and a
+// negative fixture must have everything it reaches for blocked. The second half
+// is what makes the lookalike-host fixture a real regression guard — if host
+// matching ever regressed to a prefix comparison those URLs would become allowed
+// and the gate would fail.
+
+export const EXPECT_ALLOWED = "allowed";
+export const EXPECT_BLOCKED = "blocked";
+
+// The marker keyword and its value are matched separately. Matching them in one
+// pattern makes an unrecognised value ("blockedish") fail to match at all, which
+// silently downgrades the fixture to the default expectation instead of
+// reporting the typo.
+const MARKER_PRESENT = /<!--\s*csp-expect\s*:/i;
+// Tolerates a trailing explanation inside the comment, e.g.
+// <!-- csp-expect: blocked — lookalike hosts must not resolve -->.
+const EXPECTATION_MARKER = /<!--\s*csp-expect\s*:\s*([a-z]+)\b[^>]*-->/i;
+
+/**
+ * Reads a fixture's declared expectation. Defaults to `allowed`, so a new fixture
+ * is treated as a positive case. Throws when a marker is present but its value is
+ * unrecognised, so a typo cannot quietly disable a check.
+ */
+export function readFixtureExpectation(html) {
+  if (!MARKER_PRESENT.test(html)) return EXPECT_ALLOWED;
+  const found = EXPECTATION_MARKER.exec(html)?.[1]?.toLowerCase();
+  if (found !== EXPECT_ALLOWED && found !== EXPECT_BLOCKED) {
+    throw new Error(
+      `Unrecognised csp-expect value ${found ? `"${found}"` : "(missing)"} — ` +
+        `expected "${EXPECT_ALLOWED}" or "${EXPECT_BLOCKED}"`,
+    );
+  }
+  return found;
+}
+
+/** Collapses duplicate findings so one URL is not reported several times. */
+export function dedupeFindings(findings) {
+  const seen = new Set();
+  const out = [];
+  for (const finding of findings) {
+    const key = `${finding.directive}|${finding.url}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(finding);
+  }
+  return out;
+}
+
+/**
+ * Judges one fixture against its declared expectation.
+ *
+ * Returns `status` of "pass" | "warn" | "fail" plus human-readable `problems`,
+ * so the caller can print a reason instead of only a colour.
+ */
+export function classifyFixture(expectation, analysis) {
+  const blocked = dedupeFindings(analysis.blocked ?? []);
+  const allowed = dedupeFindings(analysis.allowed ?? []);
+  const sandboxed = analysis.sandboxed ?? [];
+  const problems = [];
+
+  if (expectation === EXPECT_BLOCKED) {
+    if (allowed.length) {
+      problems.push(
+        `${allowed.length} reference(s) must be blocked but the policy allows them: ` +
+          allowed.map((a) => `[${a.directive}] ${a.url}`).join(", "),
+      );
+    }
+    if (!blocked.length) {
+      problems.push(
+        "fixture declares csp-expect: blocked but nothing it references is blocked, " +
+          "so it no longer exercises the policy",
+      );
+    }
+  } else if (blocked.length) {
+    problems.push(
+      `${blocked.length} reference(s) the fixture expects to work are blocked: ` +
+        blocked.map((b) => `[${b.directive}] ${b.url} (${b.reason})`).join(", "),
+    );
+  }
+
+  if (problems.length) return { status: "fail", problems, blocked, allowed, sandboxed };
+  if (sandboxed.length) return { status: "warn", problems, blocked, allowed, sandboxed };
+  return { status: "pass", problems, blocked, allowed, sandboxed };
+}

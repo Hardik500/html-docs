@@ -95,13 +95,30 @@ function hasScope(identity: AgentIdentity, scope: AgentScope): boolean {
 
 const contentTypeSchema = z.enum(["html", "markdown", "pdf", "doc"]);
 
+/**
+ * The `contentType` contract, shared by every tool that accepts tab content.
+ *
+ * This was previously undocumented: an agent had to guess, and the two
+ * reasonable guesses were both wrong in a way that produced a document which
+ * looked fine in the editor and was broken on export.
+ */
+const CONTENT_TYPE_GUIDE =
+  'contentType: "html" for HTML — a complete document OR a fragment; this is the right ' +
+  'choice for Google Docs/Sheets/Word "Webpage" exports and for anything pasted from a ' +
+  'rich-text editor. "doc" for an HTML FRAGMENT only (the TipTap/mammoth rich-text format); ' +
+  'a complete document is rejected because it would be nested inside another document. ' +
+  '"markdown" for Markdown source, never for HTML. "pdf" for base64 PDF data. ' +
+  'Google Docs and Sheets markup is cleaned up automatically for "html" and "doc" ' +
+  '(wrapper removed, presentational CSS dropped, bold/italic/underline preserved as tags). ' +
+  "Per-tab size limits: 500000 bytes for html/markdown, 2800000 for doc/pdf.";
+
 const tabWriteSchema = z.object({
   id: z.string().max(64).optional(),
   slug: z.string().max(200).optional(),
   name: z.string().max(200).optional(),
   position: z.number().int().min(0).optional(),
-  html: z.string().optional(),
-  content_type: contentTypeSchema.optional(),
+  content: z.string().optional(),
+  contentType: contentTypeSchema.optional(),
   _delete: z.boolean().optional(),
 });
 
@@ -251,7 +268,8 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
     {
       description:
         "Create a new document owned by the authenticated account. Requires docs:write. " +
-        "Pass the same idempotencyKey when retrying to avoid creating duplicates.",
+        "Pass the same idempotencyKey when retrying to avoid creating duplicates. " +
+        CONTENT_TYPE_GUIDE,
       inputSchema: {
         title: z.string().max(500).optional(),
         tabs: z
@@ -285,7 +303,9 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
     {
       description:
         "Replace the title and/or full tab list of an owned document. Requires docs:write. " +
-        "Read the document first and pass its current revision as baseRevision.",
+        "Read the document first and pass its current revision as baseRevision. " +
+        "This replaces the whole tab list, so include every existing tab. " +
+        CONTENT_TYPE_GUIDE,
       inputSchema: {
         documentId: z.string().regex(DOCUMENT_ID_PATTERN),
         title: z.string().max(500).optional(),
@@ -296,7 +316,16 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
     },
     async ({ documentId, title, tabs, baseRevision, idempotencyKey }) => {
       if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
-      const validated = validateSaveTabs(tabs);
+      // The tool takes `content`/`contentType` like the other write tools;
+      // validateSaveTabs() speaks the web editor's `html`/`content_type`. Adapt
+      // here rather than loosening the validator both callers share.
+      const validated = validateSaveTabs(
+        tabs.map((tab) => ({
+          ...tab,
+          html: tab.content,
+          content_type: tab.contentType,
+        })),
+      );
       return runWrite(
         "update_document",
         documentId,
@@ -312,7 +341,8 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
     {
       description:
         "Update one tab of an owned document by slug. Requires docs:write. " +
-        "Read the document first and pass its current revision as baseRevision.",
+        "Read the document first and pass its current revision as baseRevision. " +
+        CONTENT_TYPE_GUIDE,
       inputSchema: {
         documentId: z.string().regex(DOCUMENT_ID_PATTERN),
         tabSlug: z.string().regex(TAB_SLUG_PATTERN),

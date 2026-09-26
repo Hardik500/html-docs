@@ -8,6 +8,11 @@ interface PreviewIframeProps {
   html: string;
   title?: string;
   contentType?: "html" | "markdown" | "pdf" | "doc";
+  /**
+   * Same-origin URL that serves this tab's bytes. Required when
+   * `contentType` is `"pdf"`; see PdfPreview for why.
+   */
+  src?: string;
 }
 
 type HtmlPreviewProps = Omit<PreviewIframeProps, "contentType"> & {
@@ -37,12 +42,40 @@ function useIsDark() {
   return isDark;
 }
 
-function PdfPreview({ html, title = "Preview" }: Pick<PreviewIframeProps, "html" | "title">) {
+/**
+ * PDF preview.
+ *
+ * The PDF is loaded from a same-origin URL in an `<iframe>`, not from a
+ * `data:` URL in an `<embed>`:
+ *
+ *  - The app shell's CSP sets `object-src 'none'` (see app/lib/csp.server.ts),
+ *    which blocks `<embed>`/`<object>` outright — including `data:` URLs. A
+ *    browser enforces that, so a `data:` embed renders nothing.
+ *  - Relaxing the policy instead would be the wrong trade: a `data:` URL in an
+ *    embedded browsing context inherits the app origin, so `data:text/html,…`
+ *    would be a script-in-app-origin hole. Serving the bytes from our own origin
+ *    as `application/pdf` keeps the response type under server control.
+ *  - It also keeps a ~2.8 MB base64 string out of a DOM attribute.
+ *
+ * `/raw/:docId/:tabSlug` already decodes stored PDF tabs and serves them as
+ * `application/pdf`, and the public viewer at `d.$docId.$tabSlug.tsx` already
+ * previews PDFs this way. This keeps the editor consistent with it.
+ */
+function PdfPreview({ src, title = "Preview" }: Pick<PreviewIframeProps, "src" | "title">) {
+  if (!src) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-canvas text-sm text-subtle [contain:paint]">
+        PDF — no source URL available for this tab
+      </div>
+    );
+  }
+
   return (
     <div className="relative isolate h-full w-full overflow-hidden bg-canvas [contain:paint]">
-      <embed
-        src={`data:application/pdf;base64,${html}`}
-        type="application/pdf"
+      {/* No `type` attribute: it is not valid on <iframe> and the response's
+          Content-Type is what selects the PDF viewer. */}
+      <iframe
+        src={src}
         className="absolute inset-0 block h-full w-full border-0"
         title={title}
       />
@@ -163,9 +196,10 @@ export default function PreviewIframe({
   html,
   title = "Preview",
   contentType = "html",
+  src,
 }: PreviewIframeProps) {
   if (contentType === "pdf") {
-    return <PdfPreview html={html} title={title} />;
+    return <PdfPreview src={src} title={title} />;
   }
 
   return <HtmlPreview html={html} title={title} contentType={contentType} />;

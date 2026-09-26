@@ -11,6 +11,7 @@ import { extractTitle, deriveTitle, extractMarkdownTitle, deriveMarkdownTitle } 
 import TabSidebar, { type TabItem } from "~/components/TabSidebar";
 import { ThemeToggle } from "~/components/ThemeToggle";
 import DownloadBox from "~/components/DownloadBox";
+import PreviewIframe from "~/components/PreviewIframe";
 import { maxBytesForType, type TabContentType } from "~/lib/limits";
 import {
   markLocalDocumentDirty,
@@ -19,8 +20,17 @@ import {
 import { isDesktopRuntime } from "~/lib/runtime.server";
 import { MAX_TABS, validateSaveTabs } from "~/lib/document-input";
 
+// Editor (Monaco) and DocEditor (TipTap) are genuinely lazy: nothing on screen
+// needs them until their pane renders, and they are large.
+//
+// PreviewIframe is deliberately NOT lazy, even though it is large. It renders
+// immediately in both the editor and the landing page, so splitting it added a
+// request to the critical path without deferring anything. _index.tsx also
+// imports it statically, so Vite could not keep it in a private chunk anyway — it
+// warned [INEFFECTIVE_DYNAMIC_IMPORT] while still charging the editor an extra
+// round trip. A static import puts it in the shared chunk both routes already
+// load: one request fewer on the way to a usable editor.
 const Editor = lazy(() => import("~/components/Editor"));
-const PreviewIframe = lazy(() => import("~/components/PreviewIframe"));
 const DocEditor = lazy(() => import("~/components/DocEditor"));
 
 export { validateSaveTabs } from "~/lib/document-input";
@@ -99,20 +109,25 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
 export async function action({ params, request }: Route.ActionArgs) {
   const { docId } = params;
-
-  const docResult = await query<{
-    edit_token: string;
-    owner_user_id: string | null;
-    revision: string | number;
-  }>(
-    "SELECT edit_token, owner_user_id, revision FROM docs WHERE id = $1 AND deleted_at IS NULL", [docId]
-  );
-  if (!docResult.rows.length) throw new Response("Not found", { status: 404 });
-  const doc = docResult.rows[0];
-
-  const userId = await getUserId(request);
   const tokenFromCookie =
     request.headers.get("cookie")?.match(new RegExp(`anon_edit_${docId}=([^;]+)`))?.[1] ?? null;
+
+  // The document lookup and the rate-limit counter do not depend on each other.
+  // Running them together turns two sequential round trips into one, which
+  // matters because the hosted database is remote and every query costs ~200ms.
+  const [docResult, saveAllowed, userId] = await Promise.all([
+    query<{
+      edit_token: string;
+      owner_user_id: string | null;
+      revision: string | number;
+    }>(
+      "SELECT edit_token, owner_user_id, revision FROM docs WHERE id = $1 AND deleted_at IS NULL", [docId]
+    ),
+    checkSaveRate(docId),
+    getUserId(request),
+  ]);
+  if (!docResult.rows.length) throw new Response("Not found", { status: 404 });
+  const doc = docResult.rows[0];
 
   const authorized =
     (userId && userId === doc.owner_user_id) ||
@@ -121,7 +136,6 @@ export async function action({ params, request }: Route.ActionArgs) {
   if (!authorized) throw new Response("Forbidden", { status: 403 });
 
   // Rate-limit saves to prevent write-flood abuse of the auto-save endpoint.
-  const saveAllowed = await checkSaveRate(docId);
   if (!saveAllowed) throw new Response("Too many requests. Please slow down.", { status: 429 });
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
@@ -148,19 +162,29 @@ export async function action({ params, request }: Route.ActionArgs) {
     }
 
     const result = await withTransaction(async (runQuery) => {
-      const current = await runQuery<{
-        edit_token: string;
-        owner_user_id: string | null;
-        revision: string | number;
+      // One statement returns the locked document row AND the tab id/slug pairs.
+      // These are two independent reads that used to cost two round trips each
+      // autosave; a CTE keeps it to one.
+      const locked = await runQuery<{
+        doc: { edit_token: string; owner_user_id: string | null; revision: string | number } | null;
+        tabs: Array<{ id: string; slug: string }>;
       }>(
-        `SELECT edit_token, owner_user_id, revision
-           FROM docs
-          WHERE id = $1 AND deleted_at IS NULL
-          FOR UPDATE`,
+        `WITH locked_doc AS (
+           SELECT edit_token, owner_user_id, revision
+             FROM docs
+            WHERE id = $1 AND deleted_at IS NULL
+            FOR UPDATE
+         )
+         SELECT (SELECT to_jsonb(locked_doc) FROM locked_doc) AS doc,
+                COALESCE(
+                  (SELECT json_agg(json_build_object('id', t.id, 'slug', t.slug))
+                     FROM tabs t WHERE t.doc_id = $1),
+                  '[]'::json
+                ) AS tabs`,
         [docId],
       );
-      if (!current.rows.length) return { kind: "not-found" as const };
-      const currentDoc = current.rows[0];
+      const currentDoc = locked.rows[0]?.doc;
+      if (!currentDoc) return { kind: "not-found" as const };
       const authorized =
         (userId && userId === currentDoc.owner_user_id) ||
         tokenFromCookie === currentDoc.edit_token;
@@ -171,36 +195,29 @@ export async function action({ params, request }: Route.ActionArgs) {
         return { kind: "conflict" as const, currentRevision };
       }
 
-      // Update doc title
-      if (body.title) {
-        await runQuery(
-          "UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2",
-          [body.title.slice(0, 500), docId],
-        );
-      }
-
-      const existingSlugs = await runQuery<{ id: string; slug: string }>(
-        "SELECT id, slug FROM tabs WHERE doc_id = $1",
-        [docId],
-      );
-      const slugMap = new Map(existingSlugs.rows.map((r) => [r.id, r.slug]));
+      const existing = locked.rows[0].tabs as Array<{ id: string; slug: string }>;
+      const slugMap = new Map(existing.map((r) => [r.id, r.slug]));
 
       // tempId → { realId, slug } for newly created tabs
       const createdTabs: Array<{ tempId: string; id: string; slug: string }> = [];
+      const deleteIds: string[] = [];
+      const insertRows: Array<[string, string, string, number, string, TabContentType]> = [];
+      const updateRows: Array<[string, string, number, string, TabContentType]> = [];
 
       for (const tab of tabs) {
         if (tab._delete && tab.id) {
-          await runQuery("DELETE FROM tabs WHERE id = $1 AND doc_id = $2", [tab.id, docId]);
+          deleteIds.push(tab.id);
+          slugMap.delete(tab.id);
           continue;
         }
         // Detect new tabs: no id, or a client-side "new:..." temp id
-        const isNew = !tab.id || tab.id.startsWith("new:");
+        const existingTabId = tab.id && !tab.id.startsWith("new:") ? tab.id : null;
         const contentType: TabContentType =
           tab.content_type === "markdown" ? "markdown"
           : tab.content_type === "pdf"    ? "pdf"
           : tab.content_type === "doc"    ? "doc"
           : "html";
-        if (isNew) {
+        if (!existingTabId) {
           const tabId = newTabId();
           const name = (tab.name || "New Tab").slice(0, 200);
           const html = tab.html || (contentType === "markdown"
@@ -208,13 +225,9 @@ export async function action({ params, request }: Route.ActionArgs) {
             : contentType === "doc" ? `<h1>${name}</h1><p></p>`
             : contentType === "pdf" ? ""
             : "<!DOCTYPE html><html><head><title>" + name + "</title></head><body></body></html>");
-          const existingSlugSet = new Set([...slugMap.values()]);
-          const slug = dedupeSlug(slugify(name), existingSlugSet);
+          const slug = dedupeSlug(slugify(name), new Set(slugMap.values()));
           slugMap.set(tabId, slug);
-          await runQuery(
-            "INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type) VALUES ($1,$2,$3,$4,$5,$6,$7)",
-            [tabId, docId, slug, name, tab.position, html, contentType]
-          );
+          insertRows.push([tabId, slug, name, tab.position, html, contentType]);
           if (tab.id) createdTabs.push({ tempId: tab.id, id: tabId, slug });
         } else {
           const html = tab.html ?? "";
@@ -224,15 +237,73 @@ export async function action({ params, request }: Route.ActionArgs) {
             ? extractMarkdownTitle(html, "Tab")
             : contentType === "pdf" ? "PDF"
             : extractTitle(html, "Tab"))).slice(0, 200);
-          await runQuery(
-            "UPDATE tabs SET name=$1, position=$2, html=$3, content_type=$4, updated_at=now(), version=version+1 WHERE id=$5 AND doc_id=$6",
-            [name, tab.position, html, contentType, tab.id, docId]
-          );
+          updateRows.push([existingTabId, name, tab.position, html, contentType]);
         }
       }
 
-      const nextRevision =
-        (await recordDocumentChange(runQuery, docId, userId)) ?? currentRevision;
+      // Each of these is one statement regardless of how many tabs changed.
+      // The previous implementation issued one UPDATE/DELETE/INSERT per tab,
+      // so a 20-tab document cost 20+ sequential remote round trips per autosave.
+      if (deleteIds.length) {
+        await runQuery("DELETE FROM tabs WHERE doc_id = $1 AND id = ANY($2::text[])", [
+          docId,
+          deleteIds,
+        ]);
+      }
+      if (insertRows.length) {
+        await runQuery(
+          `INSERT INTO tabs (id, doc_id, slug, name, position, html, content_type)
+           SELECT i.id, $1, i.slug, i.name, i.position, i.html, i.content_type
+             FROM UNNEST($2::text[], $3::text[], $4::text[], $5::int[], $6::text[], $7::text[])
+                  AS i(id, slug, name, position, html, content_type)`,
+          [
+            docId,
+            insertRows.map((r) => r[0]),
+            insertRows.map((r) => r[1]),
+            insertRows.map((r) => r[2]),
+            insertRows.map((r) => r[3]),
+            insertRows.map((r) => r[4]),
+            insertRows.map((r) => r[5]),
+          ],
+        );
+      }
+      if (updateRows.length) {
+        await runQuery(
+          `UPDATE tabs AS t
+              SET name = i.name,
+                  position = i.position,
+                  html = i.html,
+                  content_type = i.content_type,
+                  updated_at = now(),
+                  version = t.version + 1
+             FROM UNNEST($1::text[], $2::text[], $3::int[], $4::text[], $5::text[])
+                  AS i(id, name, position, html, content_type)
+            WHERE t.id = i.id AND t.doc_id = $6`,
+          [
+            updateRows.map((r) => r[0]),
+            updateRows.map((r) => r[1]),
+            updateRows.map((r) => r[2]),
+            updateRows.map((r) => r[3]),
+            updateRows.map((r) => r[4]),
+            docId,
+          ],
+        );
+      }
+
+      // The title update is folded into the revision bump so an owned document
+      // costs one statement here instead of two.
+      const title = body.title ? body.title.slice(0, 500) : undefined;
+      let nextRevision = currentRevision;
+      if (title || userId) {
+        nextRevision =
+          (await recordDocumentChange(runQuery, docId, userId, title)) ?? currentRevision;
+      }
+      if (title && !userId) {
+        await runQuery(
+          "UPDATE docs SET title = $1, last_activity_at = now() WHERE id = $2",
+          [title, docId],
+        );
+      }
       await markLocalDocumentDirty(docId, false, runQuery);
       return { kind: "ok" as const, createdTabs, revision: nextRevision };
     });
@@ -917,9 +988,11 @@ export default function EditPage() {
         {/* Preview */}
         {(layout === "split" || layout === "preview") && activeTab?.content_type !== "doc" && (
           <div className={`relative isolate min-h-0 min-w-0 flex-1 overflow-hidden flex flex-col bg-canvas [contain:paint] ${layout === "split" ? "sm:border-l border-hairline" : ""}`}>
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-subtle">Loading…</div>}>
-              <PreviewIframe html={previewHtml} contentType={activeTab?.content_type ?? "html"} />
-            </Suspense>
+            <PreviewIframe
+              html={previewHtml}
+              contentType={activeTab?.content_type ?? "html"}
+              src={activeTab ? `/raw/${doc.id}/${activeTab.slug}` : undefined}
+            />
           </div>
         )}
       </div>

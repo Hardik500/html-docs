@@ -11,17 +11,27 @@
  * csp-policy.mjs and are covered by csp-policy.test.ts.
  *
  * Usage:  node test/csp-check.mjs
- * Exits non-zero when a fixture contains a subresource the policy blocks.
+ *
+ * Each fixture declares what it expects with an HTML marker:
+ *   <!-- csp-expect: allowed -->   (the default) everything it references loads
+ *   <!-- csp-expect: blocked -->   everything it reaches for is denied
+ *
+ * The gate checks that expectation in both directions, so a policy change that
+ * either breaks a working document or silently permits a blocked one fails.
+ * Exits non-zero on any failure, and on a malformed marker.
  */
 
 import { readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  classifyFixture,
   directiveAllows,
   extractNetworkUrls,
   extractResourceUrls,
   parseCsp,
+  readFixtureExpectation,
+  EXPECT_BLOCKED,
 } from "./csp-policy.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
@@ -117,32 +127,48 @@ console.log(`\n  Policy: ${RAW_CSP}\n`);
 
 for (const file of files) {
   const html = readFileSync(join(FIXTURES_DIR, file), "utf8");
-  const { blocked, allowed, sandboxed } = analyse(html);
 
-  const status = blocked.length ? "❌ FAIL" : sandboxed.length ? "⚠️  WARN" : "✅ PASS";
-  if (blocked.length) totalFail++;
-  else if (sandboxed.length) totalWarn++;
+  let expectation;
+  try {
+    expectation = readFixtureExpectation(html);
+  } catch (error) {
+    console.log(`❌ ERROR ${file}`);
+    console.log(`  ⚠️  ${error.message}\n`);
+    totalFail++;
+    continue;
+  }
+
+  const { blocked, allowed, sandboxed } = analyse(html);
+  const verdict = classifyFixture(expectation, { blocked, allowed, sandboxed });
+
+  const marker = expectation === EXPECT_BLOCKED ? " [expects blocked]" : "";
+  const icon = verdict.status === "fail" ? "❌ FAIL" : verdict.status === "warn" ? "⚠️  WARN" : "✅ PASS";
+  if (verdict.status === "fail") totalFail++;
+  else if (verdict.status === "warn") totalWarn++;
   else totalPass++;
 
-  console.log(`${status}  ${file}`);
+  console.log(`${icon}  ${file}${marker}`);
 
-  for (const a of allowed) console.log(`       ✓ [${a.directive}] ${a.url}`);
-  for (const b of blocked) console.log(`  🚫 [${b.directive}] ${b.url}  →  ${b.reason}`);
-  for (const s of sandboxed) console.log(`  ⚠️  [sandbox] ${s.api}  →  blocked: ${s.reason}`);
-  if (!allowed.length && !blocked.length && !sandboxed.length) {
+  for (const a of verdict.allowed) console.log(`       ✓ [${a.directive}] ${a.url}`);
+  for (const b of verdict.blocked) console.log(`  🚫 [${b.directive}] ${b.url}  →  ${b.reason}`);
+  for (const s of verdict.sandboxed) console.log(`  ⚠️  [sandbox] ${s.api}  →  blocked: ${s.reason}`);
+  for (const problem of verdict.problems) console.log(`  ⛔ ${problem}`);
+  if (!verdict.allowed.length && !verdict.blocked.length && !verdict.sandboxed.length) {
     console.log("       (no external resources)");
   }
   console.log();
 }
 
 console.log("─────────────────────────────────────────────────────────────────");
-console.log(`  Fixtures: ${files.length}   ✅ Pass: ${totalPass}   ⚠️  Warn: ${totalWarn}   ❌ Fail: ${totalFail}`);
+console.log(
+  `  Fixtures: ${files.length}   ✅ Pass: ${totalPass}   ⚠️  Warn: ${totalWarn}   ❌ Fail: ${totalFail}`,
+);
 console.log("─────────────────────────────────────────────────────────────────");
 console.log(
   totalFail
-    ? `\n  ${totalFail} fixture(s) reference subresources the raw CSP policy blocks.\n`
-    : "\n  No fixture references a blocked subresource.\n",
+    ? `\n  ${totalFail} fixture(s) did not match their declared expectation.\n`
+    : "\n  Every fixture matches its declared expectation.\n",
 );
 
-// Gate: a fixture that reaches for a blocked resource is a real finding.
+// Gate: a fixture must match what it declares, in either direction.
 process.exit(totalFail > 0 ? 1 : 0);
