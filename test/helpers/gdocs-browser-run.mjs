@@ -16,9 +16,13 @@
 import { execFileSync } from "node:child_process";
 import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const REPO = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
+// fileURLToPath, not `new URL(...).pathname`: the latter is a POSIX-shaped
+// "/D:/a/repo" on Windows, and every path built from it then carries a doubled
+// drive letter. See the same fix in test/gdocs-content.test.ts.
+const REPO = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
 /**
  * Candidate executable basenames, most preferred first. A headless shell is
