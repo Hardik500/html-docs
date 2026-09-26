@@ -7,6 +7,9 @@ export default [
   route("/d/:docId/:tabSlug", "routes/d.$docId.$tabSlug.tsx"),
   route("/d/:docId/edit", "routes/d.$docId.edit.tsx"),
   route("/raw/:docId/:tabSlug", "routes/raw.$docId.$tabSlug.tsx"),
+  // Owner-only dashboard thumbnail. Keeps preview HTML out of the dashboard's
+  // own document; see the route for why it is not public like /raw.
+  route("/thumb/:docId/:tabSlug", "routes/thumb.$docId.$tabSlug.tsx"),
   route("/download/:docId/:tabSlug", "routes/download.$docId.$tabSlug.tsx"),
   route("/auth/magic", "routes/auth.magic.tsx"),
   route("/auth/callback", "routes/auth.callback.tsx"),

@@ -4,10 +4,6 @@ import type { Route } from "./+types/dashboard";
 import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
 import { createTimer } from "~/lib/perf.server";
-import { injectDefaultStyles } from "~/lib/htmlDefaults";
-import { injectPreviewCsp } from "~/lib/preview-csp";
-import { markdownToHtml } from "~/lib/markdown";
-import { docToHtml } from "~/lib/doc";
 import { isDesktopRuntime } from "~/lib/runtime.server";
 import { Modal } from "~/components/Modal";
 import { ThemeToggle } from "~/components/ThemeToggle";
@@ -20,7 +16,6 @@ interface DocRow {
   created_at: string;
   tab_count: number;
   first_slug: string | null;
-  html: string | null;
   first_tab_content_type: string | null;
 }
 
@@ -34,12 +29,15 @@ export async function loader({ request }: Route.LoaderArgs) {
   t.mark("auth");
   if (!user) return redirect("/auth/magic");
 
-  const docsResult = await query<DocRow & { html: string }>(
+  // Metadata only. Preview HTML is fetched per card from /thumb/:docId/:tabSlug,
+  // because inlining it here put ~1.7 MB into the dashboard's SSR document (the
+  // same ~9.8 KB of injected style and scripts once per card) and defeated
+  // `loading="lazy"` on the thumbnail frames.
+  const docsResult = await query<DocRow>(
     `SELECT d.id, d.title, d.view_count, d.last_activity_at, d.created_at,
             COUNT(t.id)::int AS tab_count,
             (SELECT t2.slug FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_slug,
-            (SELECT t2.content_type FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_tab_content_type,
-            (SELECT LEFT(t2.html, POSITION('<body' IN lower(t2.html)) + 8000) FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS html
+            (SELECT t2.content_type FROM tabs t2 WHERE t2.doc_id = d.id ORDER BY t2.position ASC LIMIT 1) AS first_tab_content_type
      FROM docs d
      LEFT JOIN tabs t ON t.doc_id = d.id
      WHERE d.owner_user_id = $1 AND d.deleted_at IS NULL
@@ -53,12 +51,12 @@ export async function loader({ request }: Route.LoaderArgs) {
   const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const docs = docsResult.rows.map((doc) => {
     const d = new Date(doc.last_activity_at);
-    const html = doc.html && doc.first_tab_content_type !== "pdf"
-      ? (doc.first_tab_content_type === "markdown" ? markdownToHtml(doc.html)
-         : doc.first_tab_content_type === "doc"    ? docToHtml(doc.html)
-         : doc.html)
-      : null;
-    return { ...doc, html, last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}` };
+    return {
+      ...doc,
+      // A PDF tab has no HTML to preview, so its card shows an icon instead.
+      hasThumbnail: Boolean(doc.first_slug) && doc.first_tab_content_type !== "pdf",
+      last_activity_at: `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`,
+    };
   });
 
   t.end();
@@ -252,9 +250,14 @@ export default function Dashboard() {
                         </svg>
                         <span className="text-xs font-bold uppercase tracking-wider text-red-400">PDF</span>
                       </div>
-                    ) : doc.html ? (
+                    ) : doc.hasThumbnail && doc.first_slug ? (
                       <iframe
-                        srcDoc={injectPreviewCsp(injectDefaultStyles(doc.html, isDark))}
+                        // A URL, not srcDoc: the preview is then fetched per card,
+                        // so `loading="lazy"` can actually skip the ones that
+                        // never scroll into view. The response carries RAW_CSP, so
+                        // this frame is an opaque origin exactly as the old
+                        // sandbox="allow-scripts" srcDoc frame was.
+                        src={`/thumb/${doc.id}/${doc.first_slug}${isDark ? "?dark=1" : "?dark=0"}`}
                         sandbox="allow-scripts"
                         loading="lazy"
                         tabIndex={-1}
