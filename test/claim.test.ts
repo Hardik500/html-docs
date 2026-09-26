@@ -9,8 +9,9 @@ describe("anonymous document claim", () => {
         rows: [{ owner_user_id: null, edit_token: "edit-token" }],
       })
       .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ revision: 2 }] })
-      .mockResolvedValueOnce({ rows: [] });
+      // recordDocumentChange bumps the revision and appends to sync_changes in
+      // one statement, so the claim path issues three queries in total.
+      .mockResolvedValueOnce({ rows: [{ revision: 2 }] });
 
     const result = await claimDocument(
       query,
@@ -28,10 +29,18 @@ describe("anonymous document claim", () => {
         "doc123",
       ]),
     );
-    expect(query).toHaveBeenCalledWith(
-      expect.stringContaining("INSERT INTO sync_changes"),
-      ["doc123", "11111111-1111-4111-8111-111111111111", 2],
+    // One statement carries both the revision bump and the sync feed row.
+    const changeCall = query.mock.calls.find(([sql]) =>
+      String(sql).includes("INSERT INTO sync_changes")
     );
+    expect(changeCall).toBeDefined();
+    expect(String(changeCall?.[0])).toContain("UPDATE docs");
+    expect(changeCall?.[1]).toEqual([
+      "doc123",
+      "11111111-1111-4111-8111-111111111111",
+      null,
+    ]);
+    expect(query).toHaveBeenCalledTimes(3);
   });
 
   it("does not claim an already owned document", async () => {

@@ -213,28 +213,26 @@ export default function TabSidebar({
     dropErrorTimerRef.current = setTimeout(() => setDropError(null), 5000);
   }
 
-  // Strip HTML once per content change — not on every keypress.
-  const strippedContents = useMemo(
-    () => Object.fromEntries(
-      Object.entries(tabContents).map(([id, html]) => [id, stripHtml(html)])
-    ),
-    [tabContents]
-  );
-
-  // Recompute search results only when query or stripped content changes.
+  // Full-text search needs the tag-stripped text of every tab. Computing it
+  // eagerly walked every tab's HTML on mount, which blocked hydration on large
+  // documents even though the result is only ever read when a query is typed.
+  // Keying the memo on the trimmed query keeps the work out of the critical path.
+  const normalizedQuery = searchQuery.trim();
   const searchResults = useMemo(() => {
-    const q = searchQuery.trim();
-    if (!q) return null;
+    if (!normalizedQuery) return null;
+    const strippedContents = Object.fromEntries(
+      Object.entries(tabContents).map(([id, html]) => [id, stripHtml(html)])
+    );
     return tabs.flatMap((tab) => {
-      const nameMatch = tab.name.toLowerCase().includes(q.toLowerCase());
+      const nameMatch = tab.name.toLowerCase().includes(normalizedQuery.toLowerCase());
       if (tab.content_type === "pdf") {
         return nameMatch ? [{ tab, snippet: null as ReturnType<typeof findSnippet> }] : [];
       }
       const plain = strippedContents[tab.id] ?? "";
-      const snippet = findSnippet(plain, q);
+      const snippet = findSnippet(plain, normalizedQuery);
       return nameMatch || snippet ? [{ tab, snippet }] : [];
     });
-  }, [tabs, strippedContents, searchQuery]); // default slightly wider than w-56
+  }, [tabs, tabContents, normalizedQuery]);
   const isResizing = useRef(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(0);
@@ -510,6 +508,13 @@ export default function TabSidebar({
         ) : (
           // ── Normal drag-to-reorder mode ──────────────────────────────────
           <DndContext
+            // dnd-kit derives the `aria-describedby` on each drag handle from
+            // useUniqueId(), which uses a module-level counter rather than
+            // React's useId. That counter is shared across every SSR render in
+            // the server process but starts at zero in each fresh browser realm,
+            // so the server and client render different ids and React reports a
+            // hydration mismatch. A fixed id short-circuits the counter.
+            id="html-docs-tab-dnd"
             sensors={sensors}
             collisionDetection={closestCenter}
             onDragEnd={handleDragEnd}
