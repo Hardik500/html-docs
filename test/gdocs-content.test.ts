@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { docToHtml } from "~/lib/doc";
 import { htmlToMarkdown } from "~/lib/htmlToMarkdown.server";
@@ -28,7 +29,11 @@ import {
   gdocsHtml,
 } from "./helpers/gdocs-fixtures.mjs";
 
-const REPO = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
+// fileURLToPath, not `new URL(...).pathname`: the latter is a POSIX-shaped
+// "/D:/a/repo" on Windows, and joining that produces the doubled drive letter
+// "D:\D:\a\repo\..." that made this file fail with ENOENT on windows-latest.
+// resolve() also drops the trailing separator the URL form leaves behind.
+const REPO = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const bytes = (s: string) => new TextEncoder().encode(s).length;
 const countOf = (s: string, re: RegExp) => (s.match(re) ?? []).length;
 
