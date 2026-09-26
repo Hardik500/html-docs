@@ -12,6 +12,7 @@
   <script src="https://cdn.jsdelivr.net.attacker.test/npm"></script>
 </head>
 <body>
+  <!-- csp-expect: blocked — this fixture asserts the policy DENIES these references -->
   <pre id="out">These subresources must all be blocked.</pre>
   <script>
     fetch('https://unpkg.com.evil.test/data')

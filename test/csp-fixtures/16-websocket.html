@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <body>
+  <!-- csp-expect: blocked — this fixture asserts the policy DENIES these references -->
   <pre id="out">Connecting...</pre>
   <script>
-    // WebSocket — blocked by connect-src 'none'
+    // Tries to reach an origin that is not on connect-src — must be blocked
     try {
       const ws = new WebSocket('wss://echo.websocket.org');
       ws.onopen = () => { document.getElementById('out').textContent = 'Connected!'; };

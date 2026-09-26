@@ -1,13 +1,23 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <!-- cdnjs.cloudflare.com is NOT in the allowlist -->
+  <!--
+    cdnjs.cloudflare.com IS allowlisted, for scripts and for connect-src.
+    This fixture locks that in from both angles, because the allowlist entry is
+    easy to break by accident and nothing else asserted it.
+
+    It used to claim cdnjs was "not in the allowlist" and then make an incidental
+    axios request to an arbitrary API. The stale comment hid the fact that the
+    script src had become allowed, and the incidental request is an
+    allowlist-negative case already covered by 05-fetch-api.html.
+  -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/1.6.0/axios.min.js"></script>
 </head>
 <body>
   <pre id="out">Waiting...</pre>
   <script>
-    axios.get('https://jsonplaceholder.typicode.com/todos/1')
+    // Same allowlisted origin, so connect-src permits it too.
+    axios.get('https://cdnjs.cloudflare.com/ajax/libs/axios/package.json')
       .then(r => { document.getElementById('out').textContent = JSON.stringify(r.data); })
       .catch(e => { document.getElementById('out').textContent = 'Error: ' + e; });
   </script>

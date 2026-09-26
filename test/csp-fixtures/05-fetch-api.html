@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <body>
+  <!-- csp-expect: blocked — this fixture asserts the policy DENIES these references -->
   <pre id="out">Loading...</pre>
   <script>
-    // Tries to fetch an external API — blocked by connect-src 'none'
+    // Tries to reach an origin that is not on connect-src — must be blocked
     fetch('https://jsonplaceholder.typicode.com/todos/1')
       .then(r => r.json())
       .then(d => { document.getElementById('out').textContent = JSON.stringify(d); })
