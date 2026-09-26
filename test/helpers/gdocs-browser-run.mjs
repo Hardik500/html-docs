@@ -14,41 +14,76 @@
  * Nothing under app/ is modified; this only bundles and inspects.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 const REPO = new URL("../../", import.meta.url).pathname.replace(/\/$/, "");
 
 /**
+ * Candidate executable basenames, most preferred first. A headless shell is
+ * preferred over a full browser: the harness only ever runs the binary
+ * headless, and the shell is the smaller download.
+ */
+const BROWSER_BINARIES = ["headless_shell", "chrome-headless-shell", "chrome"];
+
+/**
+ * Every Playwright-executable-looking file under one cache directory, at any
+ * depth. An interrupted download has no executable, so a hit also proves the
+ * install finished.
+ */
+function executablesUnder(dir) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { recursive: true, withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const found = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !BROWSER_BINARIES.includes(entry.name)) continue;
+    const path = join(entry.parentPath ?? entry.path ?? dir, entry.name);
+    try {
+      accessSync(path, constants.X_OK);
+      found.push(path);
+    } catch {
+      // Not executable, so not the browser.
+    }
+  }
+  return found;
+}
+
+/**
  * Resolves a usable Chromium, or null when there is none.
  *
  * Exported so a test can SKIP rather than fail when no browser is present.
  * `runInBrowser` throws, which is right for a real assertion failure but wrong
- * for "this machine has no browser": a fresh clone or a CI runner has no
- * Playwright cache, and that is an environment fact, not a broken test.
+ * for "this machine has no browser": a fresh clone or a CI runner that has not
+ * installed one, and that is an environment fact, not a broken test.
  *
- * Both Playwright layouts are probed — the headless shell directory
- * "chromium_headless_shell-…/chrome-headless-shell-linux64/" and the full
- * browser directory "chromium-…/chrome-linux64/chrome" — because a machine may
- * have installed either. `CHROME_PATH` overrides both.
+ * The cache layout is NOT hardcoded. Playwright has shipped at least three
+ * different ones, and hardcoding one is a silent failure: the directory
+ * chromium_headless_shell-1194/chrome-headless-shell-linux64/chrome-headless-shell
+ * from an older revision is chromium_headless_shell-1194/chrome-linux/headless_shell
+ * today. The first version of this helper hardcoded the old paths, so a CI
+ * install of the current Playwright "succeeded" and the test still skipped --
+ * green for the wrong reason. So each chromium* cache entry is searched by
+ * executable name at any depth, newest entry first. `CHROME_PATH` overrides.
  */
 export function findChrome() {
   if (process.env.CHROME_PATH && existsSync(process.env.CHROME_PATH)) return process.env.CHROME_PATH;
   const cache = join(homedir(), ".cache", "ms-playwright");
   if (!existsSync(cache)) return null;
-  const layouts = [
-    ["chromium_headless_shell", "chrome-headless-shell-linux64", "chrome-headless-shell"],
-    ["chromium", "chrome-linux64", "chrome"],
-  ];
-  for (const [prefix, dir, binary] of layouts) {
-    const hit = readdirSync(cache)
-      .filter((d) => d.startsWith(prefix) && d !== prefix)
-      .sort()
-      .reverse()
-      .map((d) => join(cache, d, dir, binary))
-      .find((p) => existsSync(p));
-    if (hit) return hit;
+  const entries = readdirSync(cache)
+    .filter((d) => d.startsWith("chromium"))
+    .sort()
+    .reverse();
+  for (const entry of entries) {
+    const hits = executablesUnder(join(cache, entry));
+    for (const name of BROWSER_BINARIES) {
+      const hit = hits.find((p) => p.endsWith("/" + name));
+      if (hit) return hit;
+    }
   }
   return null;
 }
