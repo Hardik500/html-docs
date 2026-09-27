@@ -394,7 +394,7 @@ export default function TabSidebar({
   return (
     <div
       ref={rootRef}
-      className={`relative flex flex-col h-full shrink-0 z-10 border-r bg-surface border-hairline transition-colors ${
+      className={`relative flex flex-col h-full shrink-0 z-10 overflow-hidden border-r bg-surface border-hairline transition-colors ${
         dragOver ? "bg-primary/5 border-primary" : ""
       }`}
       style={{ width: sidebarWidth }}
@@ -408,15 +408,23 @@ export default function TabSidebar({
         className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize z-20 hover:bg-primary/40 transition-colors"
         title="Drag to resize"
       />
-      <div className="px-4 py-3 flex items-center justify-between border-b border-hairline">
-        <span className="text-[11px] font-bold uppercase tracking-widest text-subtle">
+      {/* The action buttons need ~220px in one line, but the sidebar resizes
+          down to 180px (see handleResize) and 180 - px-4*2 leaves ~148px. This
+          row used to be a non-wrapping flex, so the group kept its intrinsic
+          width, overflowed the sidebar, and painted straight over the editor —
+          the sidebar is shrink-0 with z-10, so nothing below it clipped that.
+          Wrapping both levels keeps the buttons inside the sidebar at any
+          width, and overflow-hidden above is the backstop that stops any future
+          content from reaching the editor. */}
+      <div className="px-4 py-3 flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 border-b border-hairline">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-subtle shrink-0">
           Files
         </span>
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1 min-w-0">
           {isDesktop && (
             <button
               onClick={handleNativeOpen}
-              className="text-xs font-medium transition-colors flex items-center gap-1 px-2 py-1 rounded text-body bg-card border border-hairline hover:bg-strong"
+              className="text-xs font-medium transition-colors flex shrink-0 items-center gap-1 px-2 py-1 rounded text-body bg-card border border-hairline hover:bg-strong"
               title="Open a document from this device"
             >
               Open
@@ -425,7 +433,7 @@ export default function TabSidebar({
           <button
             onClick={() => onAdd("html")}
             disabled={tabs.length >= 20}
-            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex shrink-0 items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
             title="Add HTML tab"
           >
             <span>+</span> HTML
@@ -433,7 +441,7 @@ export default function TabSidebar({
           <button
             onClick={() => onAdd("markdown")}
             disabled={tabs.length >= 20}
-            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex shrink-0 items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
             title="Add Markdown tab"
           >
             <span>+</span> MD
@@ -441,7 +449,7 @@ export default function TabSidebar({
           <button
             onClick={() => onAdd("doc")}
             disabled={tabs.length >= 20}
-            className="text-xs font-medium disabled:opacity-40 transition-colors flex items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
+            className="text-xs font-medium disabled:opacity-40 transition-colors flex shrink-0 items-center gap-1 px-2 py-1 rounded text-primary bg-primary/10 hover:bg-primary/20"
             title="Add Doc tab"
           >
             <span>+</span> Doc
