@@ -108,12 +108,25 @@ export async function loader({ params, request }: Route.LoaderArgs) {
  * only that entries are keyed per session, and a session's cookie is stable, so
  * the hit rate within a login is unaffected.
  *
- * stale-while-revalidate is what makes a return visit feel instant rather than
- * merely cheaper: past max-age the browser paints the cached frame immediately
- * and refetches in the background, instead of showing an empty frame. A preview
- * that can lag a few minutes is a fair trade for not re-querying on every
- * navigation; the card's "Last updated" text still comes from the document row,
- * so it does not lag with it.
+ * stale-while-revalidate lets a returning browser paint the cached frame and
+ * refresh it behind the scenes once the entry is well past its lifetime.
+ *
+ * The lifetime is 1 hour, and that number is measured rather than guessed. With
+ * max-age=60 the return visit was a cache hit only when it happened within the
+ * first minute; at 75s the response was re-fetched from the network
+ * (Network.responseReceived reported fromDiskCache=false), which is precisely
+ * the "images keep loading" report. Opening a document and coming back takes
+ * longer than a minute, so a minute-long freshness window bought almost nothing.
+ * An hour makes the return visit reliably a hit. stale-while-revalidate is kept
+ * for the case where a card is genuinely older than that, but it is not what
+ * makes the common case fast, and it is not claimed to be: the same measurement
+ * showed it does not produce an instant-from-cache iframe paint on its own.
+ *
+ * The trade is a preview that can be up to an hour behind the document. That is
+ * acceptable here because the preview is decorative — the card's title, tab
+ * count and "Last updated" all come from the document row in the dashboard's own
+ * query, so nothing on the card is stale, only the picture of it. Shortening the
+ * lifetime is a one-line change here if that balance is ever wrong.
  *
  * There is no ETag, so a revalidation is a full body rather than a 304. That is
  * deliberate for now: the ETag would have to be computed from the body, which is
@@ -128,7 +141,7 @@ function thumbnailResponseHeaders(): HeadersInit {
     "Content-Security-Policy": RAW_CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
-    "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+    "Cache-Control": "private, max-age=3600, stale-while-revalidate=86400",
     "Vary": "Cookie",
   };
 }

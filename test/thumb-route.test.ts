@@ -122,6 +122,23 @@ describe("GET /thumb/:docId/:tabSlug", () => {
     expect(cacheControl).toMatch(/stale-while-revalidate=\d+/);
   });
 
+  it("keeps the thumbnail fresh for an hour, so a return visit is a cache hit", async () => {
+    mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
+    mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
+
+    const response = await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
+    const maxAge = Number(/max-age=(\d+)/.exec(response.headers.get("Cache-Control") ?? "")?.[1]);
+
+    // Measured, not chosen for looks. With max-age=60 the browser re-fetched the
+    // thumbnail on a return visit at 75s — Network.responseReceived reported
+    // fromDiskCache=false — which is exactly the "images keep loading" report.
+    // Opening a document and coming back takes longer than a minute, so a
+    // one-minute window made the cache almost useless. An hour makes the
+    // reported round trip a reliable hit. Asserted concretely because the
+    // failure mode is invisible to a test that only checks "a max-age exists".
+    expect(maxAge).toBe(3600);
+  });
+
   it("varies on Cookie so a cached thumbnail cannot outlive the session that fetched it", async () => {
     mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
     mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
