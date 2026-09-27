@@ -93,8 +93,44 @@ describe("GET /thumb/:docId/:tabSlug", () => {
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
     expect(response.headers.get("Content-Security-Policy")).toBe(RAW_CSP);
     expect(RAW_CSP).toContain("sandbox allow-scripts");
-    // Owner-specific content must not be cached by a shared cache.
-    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    // The isolation headers /raw relies on must survive the caching change.
+    expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
+
+  it("lets the owner's own browser cache it, but never a shared cache", async () => {
+    mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
+    mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
+
+    const response = await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
+    const cacheControl = response.headers.get("Cache-Control") ?? "";
+
+    // The regression this replaces: /thumb inherited `no-store` from
+    // rawResponseHeaders(), which forbids the browser's cache too, so every
+    // dashboard visit discarded and re-fetched each visible card.
+    expect(cacheControl).not.toBe("no-store");
+    expect(cacheControl).not.toMatch(/no-store/);
+
+    // What `no-store` was standing in for: this is owner-only content reached
+    // through an authenticated request, so `private` must keep it out of shared
+    // caches and CDNs.
+    expect(cacheControl).toMatch(/(^|[\s,])private($|[\s,])/);
+
+    // A freshness lifetime is what makes a return visit a cache hit, and
+    // stale-while-revalidate is what keeps the frame from flashing empty.
+    expect(cacheControl).toMatch(/max-age=\d+/);
+    expect(cacheControl).toMatch(/stale-while-revalidate=\d+/);
+  });
+
+  it("varies on Cookie so a cached thumbnail cannot outlive the session that fetched it", async () => {
+    mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
+    mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
+
+    const response = await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
+    // The body is chosen by an ownership check. Without Vary: Cookie, signing
+    // out and into another account on the same browser could let the cache
+    // answer a /thumb URL before the loader re-checks ownership.
+    expect(response.headers.get("Vary")).toMatch(/Cookie/i);
   });
 
   it("converts markdown and doc tabs the same way the public viewer does", async () => {

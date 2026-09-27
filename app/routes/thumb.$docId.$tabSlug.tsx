@@ -1,7 +1,7 @@
 import type { Route } from "./+types/thumb.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
-import { rawResponseHeaders } from "~/lib/csp.server";
+import { RAW_CSP } from "~/lib/csp.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { injectPreviewCsp } from "~/lib/preview-csp";
 import { markdownToHtml } from "~/lib/markdown";
@@ -78,9 +78,57 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 
   return new Response(body, {
     status: 200,
-    headers: {
-      "Content-Type": "text/html; charset=utf-8",
-      ...rawResponseHeaders(),
-    },
+    headers: thumbnailResponseHeaders(),
   });
+}
+
+/**
+ * Headers for a dashboard thumbnail.
+ *
+ * These deliberately do NOT reuse rawResponseHeaders(), which carries
+ * `Cache-Control: no-store`. That is right for /raw — a shared link must always
+ * show the live document — but wrong here, and it made every dashboard visit
+ * re-fetch every visible card: `no-store` forbids the *browser's* cache as well
+ * as shared caches, so each navigation to /dashboard threw away the thumbnails
+ * and paid the query again. With ~12 cards on screen that read as "the images
+ * keep loading".
+ *
+ * What the old header was actually protecting is still protected, by `private`:
+ * this is owner-only content reached through an authenticated request, so a
+ * shared cache or CDN must never store it. `private` plus a freshness lifetime
+ * is the correct way to say that — it keeps the response out of shared caches
+ * while letting the one cache that is unambiguously safe, the requesting user's
+ * own browser, reuse it.
+ *
+ * `Vary: Cookie` is load-bearing, not hygiene. The body is decided by an
+ * ownership check, so a cached entry must not survive a session change: without
+ * it, signing out and into another account on the same browser could let the
+ * cache answer a /thumb URL before the loader ever re-checks ownership. Varying
+ * on the cookie means a new session never matches the old entry. The cost is
+ * only that entries are keyed per session, and a session's cookie is stable, so
+ * the hit rate within a login is unaffected.
+ *
+ * stale-while-revalidate is what makes a return visit feel instant rather than
+ * merely cheaper: past max-age the browser paints the cached frame immediately
+ * and refetches in the background, instead of showing an empty frame. A preview
+ * that can lag a few minutes is a fair trade for not re-querying on every
+ * navigation; the card's "Last updated" text still comes from the document row,
+ * so it does not lag with it.
+ *
+ * There is no ETag, so a revalidation is a full body rather than a 304. That is
+ * deliberate for now: the ETag would have to be computed from the body, which is
+ * only available after the query, and the query is a ~194ms round trip to the
+ * hosted database — the body is ~9.8KB by comparison. Avoiding the request
+ * entirely via max-age is the win that matters; a 304 would save bytes but not
+ * the round trip.
+ */
+function thumbnailResponseHeaders(): HeadersInit {
+  return {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Security-Policy": RAW_CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "private, max-age=60, stale-while-revalidate=300",
+    "Vary": "Cookie",
+  };
 }
