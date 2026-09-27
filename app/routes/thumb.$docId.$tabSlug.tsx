@@ -32,7 +32,10 @@ import { docToHtml } from "~/lib/doc";
  *    document that is later opened directly still carries its own policy.
  */
 
-/** Bytes of the tab body kept for a thumbnail. Enough to read, not to ship whole. */
+/**
+ * Bytes of the tab *body* kept for a thumbnail. Enough to read, not to ship
+ * whole.
+ */
 const THUMBNAIL_BODY_BYTES = 8000;
 
 export async function loader({ params, request }: Route.LoaderArgs) {
@@ -41,11 +44,34 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const user = await getUser(request);
   if (!user) throw new Response("Unauthorized", { status: 401 });
 
+  // Slice from the start of <body>, not from the start of the document.
+  //
+  // This used to be LEFT(t.html, POSITION('<body' ...) + $3), which returns the
+  // whole document up to $3 bytes past <body> — so the $3 budget applied to the
+  // body but the *entire head* was shipped on top of it. A document with a large
+  // inline <style> or a block of inline scripts in its head therefore produced a
+  // "thumbnail" far larger than the document it was previewing. Measured on
+  // seeded documents:
+  //
+  //   head of 8 KB of inline CSS   -> 271,333 bytes served
+  //   head of 8 KB of inline <script> -> 257,931 bytes served
+  //   ordinary document            ->   9,848 bytes served
+  //
+  // That is a per-card payload the moment anything real is stored — a Google
+  // Docs export arrives carrying exactly that kind of head — so a dozen cards
+  // pulled megabytes on every dashboard visit, in every browser. It is what made
+  // the previews "keep loading", and it evicts the HTTP cache, which is why
+  // making them cacheable did not visibly help.
+  //
+  // GREATEST(..., 1) because SUBSTRING's FROM must be >= 1, and a `doc` or
+  // `markdown` tab stores a fragment with no <body> at all, where POSITION
+  // returns 0. Those keep their previous behaviour: the first $3 bytes of the
+  // stored text, which is what the converters want.
   const result = await query<{
     html: string;
     content_type: string;
   }>(
-    `SELECT LEFT(t.html, POSITION('<body' IN lower(t.html)) + $3) AS html,
+    `SELECT SUBSTRING(t.html FROM GREATEST(POSITION('<body' IN lower(t.html)), 1) FOR $3) AS html,
             t.content_type
        FROM tabs t
        JOIN docs d ON d.id = t.doc_id

@@ -85,6 +85,30 @@ describe("GET /thumb/:docId/:tabSlug", () => {
     });
   });
 
+  it("does not ship the document's head in the thumbnail", async () => {
+    // The query used to be LEFT(t.html, POSITION('<body' ...) + 8000), which
+    // capped the body at 8000 bytes but shipped the entire head on top of it. A
+    // document with a large inline <style> — which is what a Google Docs export
+    // arrives with — then served 271,333 bytes for a "thumbnail", and a dozen of
+    // those is megabytes on every dashboard visit in every browser. Measured:
+    // 271,333 -> 11,280 bytes after slicing from <body> instead.
+    //
+    // Asserted on the query text itself, because the truncation happens in SQL:
+    // a test that only fed the route a short document could never see this, and
+    // the response for a short document is byte-identical either way.
+    mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
+    mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
+
+    await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
+    const sql = mocks.query.mock.calls[0][0] as string;
+
+    // Slice from the body onwards for a bounded length, rather than taking a
+    // prefix of the whole document.
+    expect(sql).toMatch(/SUBSTRING\(\s*t\.html\s+FROM\s+GREATEST\(\s*POSITION\('<body'\s+IN\s+lower\(t\.html\)\)\s*,\s*1\s*\)\s+FOR\s+\$\d+\s*\)/i);
+    // The old form returned the whole head, so it must be gone.
+    expect(sql).not.toMatch(/LEFT\s*\(\s*t\.html/i);
+  });
+
   it("serves the raw-CSP policy with a sandbox, so the frame is an opaque origin", async () => {
     mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
     mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
