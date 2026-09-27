@@ -167,6 +167,8 @@ function createRawWindow(url, origin) {
     minHeight: 520,
     backgroundColor: "#faf9f5",
     title: "html-docs document",
+    // Same as the main window: hide the default menu bar.
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -200,6 +202,8 @@ function createPreviewWindow(url) {
     minHeight: 520,
     backgroundColor: "#faf9f5",
     title: "html-docs preview",
+    // Same as the main window: hide the default menu bar.
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -247,6 +251,17 @@ function createWindow({ origin, token }) {
     minHeight: 640,
     backgroundColor: "#faf9f5",
     title: "html-docs",
+    // Hide Electron's default menu bar (File / Edit / View / Window). The app
+    // has no Menu usage at all — that bar is Electron's built-in default — and
+    // the UI is entirely in-app, so it is just a strip of dead chrome above the
+    // document title.
+    //
+    // autoHideMenuBar rather than Menu.setApplicationMenu(null) on purpose: the
+    // menu still exists, so its keyboard accelerators (copy/paste, undo) keep
+    // working and Alt still reveals the bar if it is ever wanted. Removing the
+    // menu outright would delete those accelerators, and on macOS it would also
+    // take the standard application menu with it.
+    autoHideMenuBar: true,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
