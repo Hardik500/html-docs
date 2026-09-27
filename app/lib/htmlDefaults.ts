@@ -161,11 +161,24 @@ const THEME_SCRIPT = `<script>(function(){var r=document.documentElement;if(!r.s
  */
 const LINK_SCRIPT = `<script>(function(){document.addEventListener('click',function(e){var a=e.target.closest('a');if(!a)return;var raw=a.getAttribute('href')||'';if(!raw||raw.startsWith('javascript:'))return;e.preventDefault();if(raw.startsWith('#')){var id=raw.slice(1);var t=document.getElementById(id)||document.querySelector('[name="'+id+'"]');if(t)t.scrollIntoView({behavior:'smooth',block:'start'});}else{window.parent.postMessage({type:'html-docs-open-link',url:a.href},'*');}});})();</script>`;
 
-export function injectDefaultStyles(html: string, isDark?: boolean): string {
+/**
+ * @param fonts
+ *   When false, the Google Fonts <link>s are omitted and the document falls back
+ *   to the system sans stack already declared in DEFAULT_STYLE. Used for
+ *   dashboard thumbnails: a grid of a dozen cards must not each open a
+ *   connection to fonts.googleapis.com and fonts.gstatic.com, and the frames
+ *   render blank until the webfont CSS resolves.
+ */
+export function injectDefaultStyles(
+  html: string,
+  isDark?: boolean,
+  { fonts = true }: { fonts?: boolean } = {},
+): string {
   const colorSchemeStyle = isDark !== undefined
     ? `<style>:root{color-scheme:${isDark ? "dark" : "light"}}</style>\n  `
     : "";
-  const injection = `${INTER_FONTS}\n  ${DEFAULT_STYLE}\n  ${colorSchemeStyle}${THEME_SCRIPT}\n  ${LINK_SCRIPT}`;
+  const fontLinks = fonts ? `${INTER_FONTS}\n  ` : "";
+  const injection = `${fontLinks}${DEFAULT_STYLE}\n  ${colorSchemeStyle}${THEME_SCRIPT}\n  ${LINK_SCRIPT}`;
   if (/<head[^>]*>/i.test(html)) {
     return html.replace(/(<head[^>]*>)/i, `$1\n  ${injection}`);
   }

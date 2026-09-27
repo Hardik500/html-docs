@@ -19,7 +19,7 @@ vi.mock("~/lib/auth.server", () => ({
 }));
 
 import { loader } from "~/routes/thumb.$docId.$tabSlug";
-import { RAW_CSP } from "~/lib/csp.server";
+import { THUMB_CSP } from "~/lib/csp.server";
 
 const OWNER = "11111111-1111-1111-1111-111111111111";
 const HTML_TAB = "<!DOCTYPE html><html><head><title>Doc</title></head><body><h1>Hi</h1></body></html>";
@@ -109,17 +109,57 @@ describe("GET /thumb/:docId/:tabSlug", () => {
     expect(sql).not.toMatch(/LEFT\s*\(\s*t\.html/i);
   });
 
-  it("serves the raw-CSP policy with a sandbox, so the frame is an opaque origin", async () => {
+  it("serves a sandboxed policy with no third-party origins, so cards paint without network", async () => {
     mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
     mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
 
     const response = await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-    expect(response.headers.get("Content-Security-Policy")).toBe(RAW_CSP);
-    expect(RAW_CSP).toContain("sandbox allow-scripts");
-    // The isolation headers /raw relies on must survive the caching change.
+    const csp = response.headers.get("Content-Security-Policy") ?? "";
+    expect(csp).toBe(THUMB_CSP);
+    // Still an opaque origin, as it was under RAW_CSP.
+    expect(csp).toContain("sandbox allow-scripts");
+    // The isolation headers /raw relies on must survive both changes.
     expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+
+    // A thumbnail is a static preview. It must not be able to reach any
+    // third-party origin, because that is what kept the dashboard blank: a dozen
+    // frames each fetching Google Fonts and cdn.tailwindcss.com, and the grid
+    // took ~3.5s to settle. cdn.tailwindcss.com is a runtime CSS compiler, so a
+    // document using it cannot paint until the script has downloaded and run.
+    for (const host of [
+      "cdn.tailwindcss.com",
+      "unpkg.com",
+      "cdn.jsdelivr.net",
+      "cdnjs.cloudflare.com",
+      "cdn.skypack.dev",
+      "fonts.googleapis.com",
+      "fonts.gstatic.com",
+    ]) {
+      expect(csp, host).not.toContain(host);
+    }
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("connect-src 'none'");
+  });
+
+  it("omits the Google Fonts links and re-permits no CDN in the in-document meta", async () => {
+    mocks.getUser.mockResolvedValue({ id: OWNER, email: "o@x.test" });
+    mocks.query.mockResolvedValue(rowsFor({ html: HTML_TAB, content_type: "html" }));
+
+    const response = await call("http://x/thumb/d1/main?dark=0", { docId: "d1", tabSlug: "main" });
+    const body = await response.text();
+
+    // Even if the document body itself links a webfont or a CDN script, the
+    // preview must not request it: a dozen cards must not each open a
+    // connection to a third party.
+    expect(body).not.toContain("fonts.googleapis.com");
+    expect(body).not.toContain("fonts.gstatic.com");
+
+    // The meta must not quietly re-widen what the response header forbids.
+    const meta = /content="([^"]*)"/.exec(body)?.[1] ?? "";
+    expect(meta).toBe(THUMB_CSP);
+    expect(meta).not.toContain("cdn.tailwindcss.com");
   });
 
   it("lets the owner's own browser cache it, but never a shared cache", async () => {

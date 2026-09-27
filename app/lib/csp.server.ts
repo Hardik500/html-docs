@@ -55,6 +55,44 @@ export const RAW_CSP = [
 ].join("; ");
 
 /**
+ * Policy for dashboard thumbnails.
+ *
+ * A thumbnail is a static preview shown only to its owner, and it must not
+ * contact any third party. RAW_CSP is right for /raw — a shared link is a real
+ * document, so its Tailwind Play CDN script, webfonts and images all have to
+ * work — but applying it to a grid of a dozen thumbnails means a dozen
+ * documents each opening connections to Google Fonts and cdn.tailwindcss.com at
+ * once. Measured on the dashboard: the thumbnail requests themselves completed
+ * in tens of milliseconds, but the grid took ~3.5s to settle because every
+ * frame was waiting on third-party CSS, webfonts and scripts, and the frames
+ * stay blank until those arrive.
+ *
+ * cdn.tailwindcss.com is the worst of them: it is a runtime CSS compiler, so a
+ * document using it cannot paint until the script has downloaded and run.
+ *
+ * So the preview gets system fonts, inline styles and local images only. This is
+ * also the safer default: a dashboard full of documents should not be leaking a
+ * request per card to third-party CDNs on the owner's behalf.
+ */
+export const THUMB_CSP = [
+  "default-src 'none'",
+  // Inline styles and the injected theme/anchor scripts still run, but nothing
+  // is fetched from a third-party origin.
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline'",
+  "font-src data:",
+  "img-src data: blob:",
+  "connect-src 'none'",
+  "frame-src 'none'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+  "frame-ancestors 'self'",
+  // The dashboard frame is a sandboxed opaque origin, as it was with RAW_CSP.
+  "sandbox allow-scripts",
+].join("; ");
+
+/**
  * Extra security headers applied to /raw responses.
  */
 export function rawBinaryResponseHeaders(): HeadersInit {

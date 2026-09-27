@@ -1,7 +1,7 @@
 import type { Route } from "./+types/thumb.$docId.$tabSlug";
 import { query } from "~/lib/db.server";
 import { getUser } from "~/lib/auth.server";
-import { RAW_CSP } from "~/lib/csp.server";
+import { THUMB_CSP } from "~/lib/csp.server";
 import { injectDefaultStyles } from "~/lib/htmlDefaults";
 import { injectPreviewCsp } from "~/lib/preview-csp";
 import { markdownToHtml } from "~/lib/markdown";
@@ -23,7 +23,7 @@ import { docToHtml } from "~/lib/doc";
  *  - Owner-only. Unlike `/raw`, which is public by design because that is how
  *    shared links work, a dashboard thumbnail is only ever shown to its owner,
  *    so this route must not become a second public read surface.
- *  - The response carries `RAW_CSP`, which includes `sandbox allow-scripts`, so
+ *  - The response carries `THUMB_CSP`, which includes `sandbox allow-scripts`, so
  *    the frame gets an opaque origin with no access to app cookies or storage.
  *    The `srcDoc` version got the same isolation from the `sandbox` attribute on
  *    the iframe; what changes is that the policy is now stated as a real header
@@ -100,7 +100,10 @@ export async function loader({ params, request }: Route.LoaderArgs) {
   const dark = new URL(request.url).searchParams.get("dark");
   const isDark = dark === null ? undefined : dark === "1";
 
-  const body = injectPreviewCsp(injectDefaultStyles(document, isDark));
+  const body = injectPreviewCsp(
+    injectDefaultStyles(document, isDark, { fonts: false }),
+    { policy: THUMB_CSP },
+  );
 
   return new Response(body, {
     status: 200,
@@ -164,7 +167,7 @@ export async function loader({ params, request }: Route.LoaderArgs) {
 function thumbnailResponseHeaders(): HeadersInit {
   return {
     "Content-Type": "text/html; charset=utf-8",
-    "Content-Security-Policy": RAW_CSP,
+    "Content-Security-Policy": THUMB_CSP,
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "private, max-age=3600, stale-while-revalidate=86400",
