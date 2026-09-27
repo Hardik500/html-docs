@@ -46,12 +46,58 @@ writeFileSync(
 
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-const build = spawnSync(npm, ["run", "build"], { cwd: root, stdio: "inherit", env });
-if (build.status !== 0) process.exit(build.status ?? 1);
 
-const packageBuild = spawnSync(
-  npx,
-  ["electron-builder", "--config", "electron-builder.yml"],
-  { cwd: root, stdio: "inherit", env },
-);
-process.exit(packageBuild.status ?? 1);
+// Windows only. npm and npx are .cmd shims there, and Node will not execute a
+// .cmd/.bat without a shell -- the documented invocation is
+// `spawn('"my script.cmd" a b', { shell: true })`. Without this the spawn never
+// starts and desktop:dist exits 1 on windows-latest having printed nothing at
+// all, which is how this went unnoticed for as long as it did.
+//
+// Scoped to win32 on purpose: on Linux and macOS a shell is not required, so
+// those platforms keep a direct exec and their behaviour is unchanged. Every
+// argument here is a static literal with no spaces or shell metacharacters, so
+// nothing is re-interpreted by the shell.
+const shell = process.platform === "win32";
+
+/**
+ * Runs a command, and never exits silently.
+ *
+ * spawnSync reports a failure to *launch* through `error`, with `status` left
+ * null. Checking only `status` and then `process.exit(status ?? 1)` turns a
+ * launch failure into a bare exit code with no message, which is precisely why
+ * the Windows failure above had to be diagnosed from the absence of output.
+ */
+function run(label, command, args) {
+  const result = spawnSync(command, args, { cwd: root, stdio: "inherit", env, shell });
+  if (result.error) {
+    console.error(`${label}: could not start ${command}: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.signal) {
+    console.error(`${label}: ${command} was terminated by ${result.signal}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
+run("build", npm, ["run", "build"]);
+
+// --publish never is explicit on purpose. electron-builder.yml sets no
+// `publish` key, and when it is undefined electron-builder infers one from the
+// environment: on CI it escalates to "onTagOrDraft" and tries to create a draft
+// GitHub release. That is not what this build is for — the workflow uploads the
+// archive with actions/upload-artifact — and without a token it fails at the very
+// last step, *after* a working installer has been produced:
+//
+//   building embedded block map  file=release/html-docs-0.1.0.AppImage
+//   Implicit publishing triggered by CI detection.
+//   GitHub Personal Access Token is not set, neither programmatically, nor
+//   using env "GH_TOKEN"
+//
+// Being explicit also stops this depending on an inference that upstream has
+// already deprecated ("this behavior will be disabled in electron-builder v27").
+// Nothing that works today is lost: publishing is currently impossible without a
+// token, so the build has never succeeded at this step. If releases are ever
+// wanted from CI, that is a deliberate change with a token attached, not an
+// accident of detection.
+run("package", npx, ["electron-builder", "--config", "electron-builder.yml", "--publish", "never"]);
