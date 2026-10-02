@@ -173,7 +173,13 @@ The hosted app exposes a stateless MCP endpoint at:
 https://your-hosted-origin.example.com/mcp
 ```
 
-Create an agent token from **Dashboard → Agents**, choosing only the scopes the agent needs, then configure an MCP client with the token:
+### Get a token
+
+Create an agent token from **Dashboard → Agents**, choosing only the scopes the agent needs. Agent tokens are stored hashed and can be revoked from the dashboard.
+
+### Generic configuration
+
+Most MCP clients read an `mcpServers` block. Put your origin and token in this and paste it wherever your client keeps its settings:
 
 ```json
 {
@@ -189,7 +195,79 @@ Create an agent token from **Dashboard → Agents**, choosing only the scopes th
 }
 ```
 
-Agent tokens are stored hashed and can be revoked from the dashboard.
+Keep `"type": "http"`. An entry with a `url` and no `type` is read as a **stdio** server by several clients, including Claude Code, which then skips it with a configuration error.
+
+### Client-specific configuration
+
+The endpoint speaks Streamable HTTP with JSON responses and no session state, so it accepts `POST` only. All four clients below work as-is; a client that insists on opening a server-initiated SSE stream with `GET` will get a `405`.
+
+| Client | Where to configure | Auth shape |
+| --- | --- | --- |
+| [Claude Code](#claude-code) | `claude mcp add`, or `.mcp.json` | `headers.Authorization` |
+| [Claude Desktop](#claude-desktop) | `claude_desktop_config.json` | `headers.Authorization` |
+| [opencode](#opencode) | `opencode.json` | `headers.Authorization` |
+| [OpenAI](#openai) | Responses API request body | `authorization` |
+
+#### Claude Code
+
+```bash
+claude mcp add --transport http html-docs https://your-hosted-origin.example.com/mcp \
+  --header "Authorization: Bearer $HTML_DOCS_TOKEN"
+```
+
+Add `--scope project` to share it with your team through a `.mcp.json` in the repo, or `--scope user` to make it available in every project. Without a scope it is stored for the current project only. Check the result with `claude mcp list`, which reports a real connection status rather than just the stored configuration.
+
+#### Claude Desktop
+
+Same `mcpServers` block as the generic example above, in `claude_desktop_config.json`. Note that the file is read only at launch, so restart Claude Desktop after editing it.
+
+#### opencode
+
+opencode uses an `mcp` key rather than `mcpServers`, and `"type": "remote"` rather than `"http"`:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "html-docs": {
+      "type": "remote",
+      "url": "https://your-hosted-origin.example.com/mcp",
+      "enabled": true,
+      "headers": {
+        "Authorization": "Bearer {env:HTML_DOCS_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Use `opencode.json` in a project, or `~/.config/opencode/opencode.json` for every project. `{env:VAR}` keeps the token out of the file.
+
+#### OpenAI
+
+The Responses API takes the server in the request body rather than in client settings. The credential is an `authorization` **value**, not a header:
+
+```json
+{
+  "model": "<a model that supports the mcp tool>",
+  "tools": [
+    {
+      "type": "mcp",
+      "server_label": "html_docs",
+      "server_url": "https://your-hosted-origin.example.com/mcp",
+      "authorization": "hdo_...",
+      "require_approval": "always",
+      "allowed_tools": ["whoami", "list_documents", "get_document", "get_tab"]
+    }
+  ],
+  "input": "Summarize my most recent document"
+}
+```
+
+Two things to know before you rely on this:
+
+- OpenAI does not store or return the `authorization` value, so it must be sent on **every** Responses request.
+- `allowed_tools` is the cheap safety control. Listing only the read-only tools keeps a model from editing or deleting documents, and keeps the tool definitions it pays to import small. `require_approval: "never"` skips the approval round trip, which you probably do not want for a token that can write.
 
 ### OAuth 2.1
 
