@@ -11,6 +11,7 @@ import {
   type AgentScope,
 } from "~/lib/agent-tokens.server";
 import { findOwnedGrantClient, listUserOAuthGrants, revokeClientGrants } from "~/lib/oauth.server";
+import { resourceIdentifier } from "~/lib/mcp-resource.server";
 
 const SCOPE_OPTIONS: Array<{ scope: AgentScope; label: string; hint: string }> = [
   { scope: "docs:read", label: "Read", hint: "List, search, and read documents and tabs" },
@@ -27,7 +28,14 @@ export async function loader(_args: Route.LoaderArgs) {
     listAgentTokens(userId),
     listUserOAuthGrants(userId),
   ]);
-  return { tokens, grants };
+  return {
+    tokens,
+    grants,
+    // The snippets below are generated from the real resource identifier, so a
+    // copied config cannot point a client at a host this deployment does not
+    // serve. This used to be a hardcoded preview URL.
+    mcpEndpoint: resourceIdentifier(_args.request),
+  };
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -70,7 +78,7 @@ function formatDate(value: string | null): string {
 }
 
 export default function DashboardAgents() {
-  const { tokens, grants } = useLoaderData<typeof loader>();
+  const { tokens, grants, mcpEndpoint } = useLoaderData<typeof loader>();
   const actionData = useActionData<typeof action>();
   const [copied, setCopied] = useState(false);
   const createdToken = actionData && "token" in actionData ? actionData.token : null;
@@ -166,20 +174,20 @@ export default function DashboardAgents() {
               <div>
                 <h3 className="font-semibold">OpenCode</h3>
                 <p className="mt-1 text-xs">
-                  Add this to your OpenCode configuration, then set the token in your shell before starting OpenCode.
+                  Add this to <code className="font-mono">opencode.json</code>, then set the token in
+                  your shell before starting OpenCode.
                 </p>
                 <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
 {`{
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "servers": {
-      "html-docs": {
-        "type": "remote",
-        "url": "https://html-docs-pink.vercel.app/mcp",
-        "oauth": false,
-        "headers": {
-          "Authorization": "Bearer {env:HTML_DOCS_MCP_TOKEN}"
-        }
+    "html-docs": {
+      "type": "remote",
+      "url": "${mcpEndpoint}",
+      "enabled": true,
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:HTML_DOCS_MCP_TOKEN}"
       }
     }
   }
@@ -187,6 +195,25 @@ export default function DashboardAgents() {
                 </pre>
                 <p className="mt-2 text-xs">
                   Set <code className="font-mono">HTML_DOCS_MCP_TOKEN</code> in the environment, restart OpenCode, and run <code className="font-mono">opencode mcp list</code>.
+                </p>
+                <p className="mt-2 text-xs">
+                  OpenCode picks this up automatically from{" "}
+                  <code className="font-mono">/.well-known/opencode</code> — enable the{" "}
+                  <code className="font-mono">html-docs</code> entry in your config instead if you
+                  would rather sign in through the browser and skip the token.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold">Claude Code</h3>
+                <p className="mt-1 text-xs">Paste the token shown above into your shell first.</p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
+{`claude mcp add --transport http html-docs ${mcpEndpoint} \\
+  --header "Authorization: Bearer $HTML_DOCS_MCP_TOKEN"`}
+                </pre>
+                <p className="mt-2 text-xs">
+                  Keep <code className="font-mono">"type": "http"</code> in the JSON form below. An
+                  entry with a <code className="font-mono">url</code> and no{" "}
+                  <code className="font-mono">type</code> is read as a stdio server and skipped.
                 </p>
               </div>
               <div>
@@ -200,7 +227,7 @@ export default function DashboardAgents() {
   "mcpServers": {
     "html-docs": {
       "type": "http",
-      "url": "https://html-docs-pink.vercel.app/mcp"
+      "url": "${mcpEndpoint}"
     }
   }
 }`}
@@ -214,12 +241,33 @@ export default function DashboardAgents() {
   "mcpServers": {
     "html-docs": {
       "type": "http",
-      "url": "https://html-docs-pink.vercel.app/mcp",
+      "url": "${mcpEndpoint}",
       "headers": {
         "Authorization": "Bearer hdo_<paste-token>"
       }
     }
   }
+}`}
+                </pre>
+              </div>
+              <div>
+                <h3 className="font-semibold">OpenAI Responses API</h3>
+                <p className="mt-1 text-xs">
+                  The server goes in the request body, and the credential is an{" "}
+                  <code className="font-mono">authorization</code> value rather than a header. It is
+                  not stored, so send it on every request.
+                </p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-white p-3 text-xs">
+{`{
+  "tools": [{
+    "type": "mcp",
+    "server_label": "html_docs",
+    "server_url": "${mcpEndpoint}",
+    "authorization": "hdo_<paste-token>",
+    "require_approval": "always",
+    "allowed_tools": ["whoami", "list_documents", "get_document", "get_tab"]
+  }],
+  "input": "Summarize my most recent document"
 }`}
                 </pre>
               </div>
