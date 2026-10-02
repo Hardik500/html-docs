@@ -6,9 +6,13 @@ import { describe, expect, it } from "vitest";
 const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = readFileSync(join(REPO, "app/routes/dashboard.agents.tsx"), "utf8");
 
-/** Every `{`...`}` template literal in the file is a JSON snippet shown to a user. */
+/**
+ * Every client snippet is now built in `clientPanels()`, one per tab. Extracting
+ * them from the source means the test tracks the real data rather than a UI
+ * markup shape that can change without touching the payloads.
+ */
 function jsonSnippets(): string[] {
-  return [...source.matchAll(/\{`([\s\S]*?)`\}/g)]
+  return [...source.matchAll(/^\s+snippet: `([\s\S]*?)`,$/gm)]
     .map((match) => match[1])
     .filter((body) => body.trim().startsWith("{"));
 }
@@ -43,6 +47,20 @@ function isValidOpencodeMcpEntry(value: unknown): boolean {
 }
 
 describe("agent dashboard config snippets", () => {
+  it("exposes one tab per client, each with a snippet", () => {
+    const ids = [...source.matchAll(/^\s+id: "([a-z-]+)",$/gm)].map((m) => m[1]);
+    expect(ids).toEqual([
+      "opencode",
+      "claude-code",
+      "browser-signin",
+      "generic",
+      "openai",
+    ]);
+    // Five panels: opencode, claude-code, browser-signin, generic, openai.
+    // The Claude Code one is a shell command, so it is not valid JSON.
+    expect(jsonSnippets()).toHaveLength(4);
+  });
+
   it("renders every snippet as valid JSON", () => {
     const snippets = jsonSnippets();
     expect(snippets.length).toBeGreaterThan(0);
@@ -77,7 +95,11 @@ describe("agent dashboard config snippets", () => {
     // config pointed at a preview deployment regardless of where it was pasted.
     expect(source).not.toMatch(/https:\/\/html-docs-pink\.vercel\.app/);
     expect(source).toMatch(/mcpEndpoint: resourceIdentifier\(/);
-    expect(source).toContain('"url": "${mcpEndpoint}"');
+    // The snippets interpolate the endpoint passed into clientPanels().
+    expect(source).toContain("function clientPanels(endpoint: string)");
+    expect(source).toContain("const panels = clientPanels(mcpEndpoint)");
+    const interpolated = [...source.matchAll(/\$\{endpoint\}/g)];
+    expect(interpolated.length).toBe(5);
   });
 
   it("tells Claude Code users that a url without a type is read as stdio", () => {
@@ -96,15 +118,68 @@ describe("agent dashboard config snippets", () => {
     expect(parsed.tools[0].require_approval).toBe("always");
   });
 
-  it("points at the browser sign-in path for clients that support it", () => {
-    expect(source).toMatch(/browser sign-in \(no token needed\)/);
-    // A url with no type is skipped by Claude Code, so the generic block keeps it.
-    const generic = jsonSnippets().find((snippet) => snippet.includes("mcpServers") && !snippet.includes("Authorization"));
-    expect(generic).toBeDefined();
-    expect(JSON.parse(generic as string).mcpServers["html-docs"].type).toBe("http");
+  it("offers browser sign-in as its own tab, and keeps type http in the generic form", () => {
+    expect(source).toMatch(/id: "browser-signin"/);
+    expect(source).toContain("No token needed");
+
+    const snippets = jsonSnippets();
+    // The tokenless browser-sign-in snippet: a url and a type, no credentials.
+    const tokenless = snippets.find(
+      (snippet) => snippet.includes("mcpServers") && !snippet.includes("Authorization"),
+    );
+    expect(tokenless).toBeDefined();
+    expect(JSON.parse(tokenless as string).mcpServers["html-docs"].type).toBe("http");
   });
 
   it("mentions the opencode discovery endpoint now that the app serves it", () => {
     expect(source).toMatch(/\/\.well-known\/opencode/);
+  });
+});
+
+describe("agent dashboard client tabs", () => {
+  it("implements the ARIA tab pattern with roving focus", () => {
+    // A tablist that does not drive aria-selected / aria-controls, or that leaves
+    // every tab in the tab order, breaks both screen readers and arrow keys.
+    expect(source).toContain('role="tablist"');
+    expect(source).toContain('role="tab"');
+    expect(source).toContain('role="tabpanel"');
+    expect(source).toContain("aria-selected={selected}");
+    expect(source).toContain("aria-controls=");
+    expect(source).toContain("aria-labelledby=");
+    // Exactly one tab is in the tab order at a time.
+    expect(source).toContain("tabIndex={selected ? 0 : -1}");
+  });
+
+  it("moves focus with arrow, Home, and End keys", () => {
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
+      expect(source).toContain(`"${key}"`);
+    }
+    // preventDefault stops the page from scrolling under the moving focus.
+    expect(source).toContain("event.preventDefault()");
+    expect(source).toMatch(/tabRefs\.current\[panels\[next\]\.id\]\?\.focus\(\)/);
+  });
+
+  it("hides inactive panels with the hidden attribute, not just styling", () => {
+    // display:none alone leaves the panel reachable by screen reader.
+    expect(source).toContain("hidden={panel.id !== activeClient}");
+  });
+
+  it("gives every panel a stable, id-derived tab relationship", () => {
+    expect(source).toContain("const tablistId = useId()");
+    expect(source).toContain("id={`${tablistId}-tab-${panel.id}`}");
+    expect(source).toContain("id={`${tablistId}-panel-${panel.id}`}");
+  });
+
+  it("keeps notes as a list so they read as separate points", () => {
+    expect(source).toMatch(/<ul className="mt-3 space-y-1\.5 text-xs">/);
+    // A bullet drawn with a character would be read aloud as punctuation.
+    expect(source).not.toMatch(/<li[^>]*>[•·▪-]\s/);
+  });
+
+  it("themes the token panel for dark mode", () => {
+    // bg-amber-50 is a light surface; without dark: overrides the whole panel
+    // stayed near-white against the dark canvas.
+    expect(source).toMatch(/bg-amber-50[\s\S]{0,200}dark:bg-amber-950\/30/);
+    expect(source).toContain("dark:text-amber-100");
   });
 });
