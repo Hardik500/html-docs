@@ -10,15 +10,23 @@ import {
 } from "~/lib/agent-tokens.server";
 import {
   createUserDocument,
+  createUserDocumentTab,
   deleteUserDocument,
+  deleteUserDocumentTab,
   getUserDocument,
   getUserDocumentTab,
   listUserDocuments,
+  renameUserDocument,
   updateUserDocument,
   updateUserDocumentTab,
 } from "~/lib/document-service.server";
 import { withIdempotency } from "~/lib/agent-idempotency.server";
-import { AgentWriteError, validateNewDocumentTabs, validateSaveTabs } from "~/lib/document-input";
+import {
+  AgentWriteError,
+  MAX_TABS,
+  validateNewDocumentTabs,
+  validateSaveTabs,
+} from "~/lib/document-input";
 import { checkMcpRate } from "~/lib/ratelimit.server";
 import { isDesktopRuntime } from "~/lib/runtime.server";
 
@@ -89,6 +97,27 @@ function toolError(message: string) {
   };
 }
 
+/**
+ * Maps a write-path failure onto a tool error, or returns null when the error is
+ * not one a caller can act on.
+ *
+ * The shared document-input validators throw two different things:
+ * `validateSaveTabs` throws a `Response` so the web editor can answer a form post
+ * with one, while the agent-facing validators throw `AgentWriteError`. Without
+ * this, a rejected `update_document` reached the client as the literal text
+ * `[object Response]`.
+ */
+async function toolFailure(error: unknown): Promise<ReturnType<typeof toolError> | null> {
+  if (error instanceof AgentWriteError) {
+    return toolError(`${error.message} (status ${error.status})`);
+  }
+  if (error instanceof Response) {
+    const message = (await error.text().catch(() => "")).trim() || "Invalid document content";
+    return toolError(`${message} (status ${error.status})`);
+  }
+  return null;
+}
+
 function hasScope(identity: AgentIdentity, scope: AgentScope): boolean {
   return identity.scopes.includes(scope);
 }
@@ -110,17 +139,47 @@ const CONTENT_TYPE_GUIDE =
   '"markdown" for Markdown source, never for HTML. "pdf" for base64 PDF data. ' +
   'Google Docs and Sheets markup is cleaned up automatically for "html" and "doc" ' +
   '(wrapper removed, presentational CSS dropped, bold/italic/underline preserved as tags). ' +
-  "Per-tab size limits: 500000 bytes for html/markdown, 2800000 for doc/pdf.";
+  "Per-tab size limits: 500000 bytes for html/markdown, 2800000 for doc/pdf. " +
+  "A document may hold at most " +
+  MAX_TABS +
+  " tabs. Tab slugs are assigned when a tab is created and never change, so renaming a " +
+  "tab does not change its URL — /raw and public share links keep working.";
 
-const tabWriteSchema = z.object({
-  id: z.string().max(64).optional(),
-  slug: z.string().max(200).optional(),
-  name: z.string().max(200).optional(),
-  position: z.number().int().min(0).optional(),
-  content: z.string().optional(),
-  contentType: contentTypeSchema.optional(),
-  _delete: z.boolean().optional(),
-});
+/**
+ * One entry in a whole-document replacement.
+ *
+ * `name`, `position`, and `content` are only optional here because a `_delete`
+ * entry carries none of them — validateSaveTabs() enforces that split on the
+ * server, and this refinement surfaces the same rule at the tool boundary so an
+ * agent gets "content is required unless _delete is true" instead of discovering
+ * it as "Tab content is required" after a full document read.
+ */
+const tabWriteSchema = z
+  .object({
+    id: z.string().max(64).optional(),
+    slug: z.string().max(200).optional(),
+    name: z.string().max(200).optional(),
+    position: z.number().int().min(0).optional(),
+    content: z.string().optional(),
+    contentType: contentTypeSchema.optional(),
+    _delete: z.boolean().optional(),
+  })
+  .superRefine((tab, ctx) => {
+    if (tab._delete === true) {
+      if (tab.id === undefined) {
+        ctx.addIssue({ code: "custom", message: "A deleted tab needs the tab id from get_document." });
+      }
+      return;
+    }
+    for (const field of ["name", "position", "content"] as const) {
+      if (tab[field] === undefined) {
+        ctx.addIssue({
+          code: "custom",
+          message: `${field} is required on every tab you keep; use _delete: true to remove one.`,
+        });
+      }
+    }
+  });
 
 function resourceUrl(request: Request): URL {
   return new URL(process.env.MCP_RESOURCE_URL || new URL("/mcp", request.url).toString());
@@ -255,11 +314,13 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
         replayed,
       });
     } catch (error) {
-      if (error instanceof AgentWriteError) {
-        audit(toolName, documentId, "error", { ...metadata, reason: error.message.slice(0, 200) });
-        return toolError(`${error.message} (status ${error.status})`);
-      }
-      throw error;
+      const failure = await toolFailure(error);
+      if (!failure) throw error;
+      audit(toolName, documentId, "error", {
+        ...metadata,
+        reason: failure.content[0].text.slice(0, 200),
+      });
+      return failure;
     }
   };
 
@@ -281,19 +342,22 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
             }),
           )
           .min(1)
-          .max(20),
+          .max(MAX_TABS),
         idempotencyKey: z.string().max(200).optional(),
       },
     },
     async ({ title, tabs, idempotencyKey }) => {
       if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
-      const validated = validateNewDocumentTabs(tabs);
       return runWrite(
         "create_document",
         null,
         idempotencyKey ?? null,
-        { tabCount: validated.length },
-        () => createUserDocument(identity.userId, { title, tabs: validated }),
+        { tabCount: tabs.length },
+        () =>
+          createUserDocument(identity.userId, {
+            title,
+            tabs: validateNewDocumentTabs(tabs),
+          }),
       );
     },
   );
@@ -304,34 +368,42 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
       description:
         "Replace the title and/or full tab list of an owned document. Requires docs:write. " +
         "Read the document first and pass its current revision as baseRevision. " +
-        "This replaces the whole tab list, so include every existing tab. " +
+        "This replaces the whole tab list, so include every existing tab — an existing tab " +
+        "omitted from `tabs` is not deleted, it is simply left alone. To add, remove or " +
+        "edit ONE tab, prefer create_tab, delete_tab, update_tab, or rename_document: " +
+        "they need no document read and no resend of the other tabs' content. Reordering " +
+        "tabs is only possible here, by writing the whole list with new positions. " +
         CONTENT_TYPE_GUIDE,
       inputSchema: {
         documentId: z.string().regex(DOCUMENT_ID_PATTERN),
         title: z.string().max(500).optional(),
-        tabs: z.array(tabWriteSchema).min(1).max(40),
+        tabs: z.array(tabWriteSchema).min(1).max(MAX_TABS),
         baseRevision: z.number().int().min(0),
         idempotencyKey: z.string().max(200).optional(),
       },
     },
     async ({ documentId, title, tabs, baseRevision, idempotencyKey }) => {
       if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
-      // The tool takes `content`/`contentType` like the other write tools;
-      // validateSaveTabs() speaks the web editor's `html`/`content_type`. Adapt
-      // here rather than loosening the validator both callers share.
-      const validated = validateSaveTabs(
-        tabs.map((tab) => ({
-          ...tab,
-          html: tab.content,
-          content_type: tab.contentType,
-        })),
-      );
       return runWrite(
         "update_document",
         documentId,
         idempotencyKey ?? null,
-        { tabCount: validated.length, hasTitle: title !== undefined },
-        () => updateUserDocument(identity.userId, documentId, { title, tabs: validated, baseRevision }),
+        { tabCount: tabs.length, hasTitle: title !== undefined },
+        () =>
+          updateUserDocument(identity.userId, documentId, {
+            title,
+            // The tool takes `content`/`contentType` like the other write tools;
+            // validateSaveTabs() speaks the web editor's `html`/`content_type`.
+            // Adapt here rather than loosening the validator both callers share.
+            tabs: validateSaveTabs(
+              tabs.map((tab) => ({
+                ...tab,
+                html: tab.content,
+                content_type: tab.contentType,
+              })),
+            ),
+            baseRevision,
+          }),
       );
     },
   );
@@ -342,6 +414,8 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
       description:
         "Update one tab of an owned document by slug. Requires docs:write. " +
         "Read the document first and pass its current revision as baseRevision. " +
+        "Omitted fields are left untouched, so a name-only change does not resend the " +
+        "tab's content. " +
         CONTENT_TYPE_GUIDE,
       inputSchema: {
         documentId: z.string().regex(DOCUMENT_ID_PATTERN),
@@ -367,6 +441,96 @@ function createMcpServer(identity: AgentIdentity, request: Request): McpServer {
             contentType,
             baseRevision,
           }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "create_tab",
+    {
+      description:
+        "Append a new tab to an existing owned document. Requires docs:write. " +
+        "Read the document first and pass its current revision as baseRevision. " +
+        "This is cheaper and safer than update_document, which would require reading the " +
+        "document and resending every existing tab. " +
+        CONTENT_TYPE_GUIDE,
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        name: z.string().max(200).optional(),
+        content: z.string(),
+        contentType: contentTypeSchema.optional(),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, name, content, contentType, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
+      return runWrite(
+        "create_tab",
+        documentId,
+        idempotencyKey ?? null,
+        { hasName: name !== undefined },
+        () =>
+          createUserDocumentTab(identity.userId, documentId, {
+            name,
+            content,
+            contentType,
+            baseRevision,
+          }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "delete_tab",
+    {
+      description:
+        "Delete one tab of an owned document by slug, closing the gap in tab order. " +
+        "Requires docs:delete, separately from docs:write. " +
+        "Read the document first and pass its current revision as baseRevision. " +
+        "A document must keep at least one tab; delete the document instead.",
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        tabSlug: z.string().regex(TAB_SLUG_PATTERN),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, tabSlug, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:delete")) return toolError("Missing required scope: docs:delete");
+      return runWrite(
+        "delete_tab",
+        documentId,
+        idempotencyKey ?? null,
+        { tabSlug },
+        () => deleteUserDocumentTab(identity.userId, documentId, tabSlug, { baseRevision }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "rename_document",
+    {
+      description:
+        "Change the title of an owned document, leaving every tab untouched. Requires " +
+        "docs:write. Read the document first and pass its current revision as baseRevision. " +
+        "Prefer this over update_document, which requires reading the document and " +
+        "resending the content of every tab. An empty title keeps the current one.",
+      inputSchema: {
+        documentId: z.string().regex(DOCUMENT_ID_PATTERN),
+        title: z.string().max(500),
+        baseRevision: z.number().int().min(0),
+        idempotencyKey: z.string().max(200).optional(),
+      },
+    },
+    async ({ documentId, title, baseRevision, idempotencyKey }) => {
+      if (!hasScope(identity, "docs:write")) return toolError("Missing required scope: docs:write");
+      return runWrite(
+        "rename_document",
+        documentId,
+        idempotencyKey ?? null,
+        {},
+        () => renameUserDocument(identity.userId, documentId, { title, baseRevision }),
       );
     },
   );

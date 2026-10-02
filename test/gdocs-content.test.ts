@@ -134,7 +134,8 @@ describe("(a) MCP contentType semantics for Google Docs HTML", () => {
     // write tools took `content` + `contentType`, so an agent reusing the
     // create_document convention got a content error instead of a schema error.
     const mcp = readSource(join(REPO, "app/routes/mcp.ts"));
-    const schema = /const tabWriteSchema = z\.object\(\{([\s\S]*?)\}\);/.exec(mcp)?.[1] ?? "";
+    // The object literal, whatever refinement wraps it.
+    const schema = /const tabWriteSchema[\s\S]*?\.object\(\{([\s\S]*?)\}\)/.exec(mcp)?.[1] ?? "";
     expect(schema).toMatch(/content: z\.string\(\)\.optional\(\)/);
     expect(schema).toMatch(/contentType: contentTypeSchema\.optional\(\)/);
     expect(schema).not.toMatch(/\bhtml:/);
@@ -408,7 +409,9 @@ describe("(h) MCP tool description text", () => {
   const mcp = readSource(join(REPO, "app/routes/mcp.ts"));
 
   it("documents the contentType contract on every tool that accepts tab content", () => {
-    const guide = /const CONTENT_TYPE_GUIDE =([\s\S]*?);\n\nconst tabWriteSchema/.exec(mcp)?.[1] ?? "";
+    // Greedy so the capture spans the whole concatenated string, which contains its
+// own semicolons, and tolerates a doc comment between the guide and the schema.
+const guide = /const CONTENT_TYPE_GUIDE =([\s\S]*);[\s\S]*?const tabWriteSchema/.exec(mcp)?.[1] ?? "";
     // An agent previously had only a bare enum and no statement of which type
     // accepts a full document, so both reasonable guesses were wrong.
     expect(guide).toMatch(/html/);
@@ -418,8 +421,16 @@ describe("(h) MCP tool description text", () => {
     expect(guide).toMatch(/Google Docs/);
     expect(guide).toMatch(/500000 bytes/);
     expect(guide).toMatch(/2800000 for doc\/pdf/);
+    // The two facts an agent cannot discover from a tool result: the hard tab
+    // ceiling, and that a tab's slug is fixed at creation so a rename does not
+    // change its share URL. The limit is interpolated from MAX_TABS here; the
+    // resolved number is asserted against the advertised description in
+    // test/mcp.test.ts.
+    expect(guide).toMatch(/at most/);
+    expect(guide).toMatch(/MAX_TABS/);
+    expect(guide).toMatch(/slugs are assigned when a tab is created and never change/);
 
-    for (const tool of ["create_document", "update_document", "update_tab"]) {
+    for (const tool of ["create_document", "update_document", "update_tab", "create_tab"]) {
       const block = new RegExp(
         `registerTool\\(\\s*\\n\\s*"${tool}",[\\s\\S]*?description:[\\s\\S]*?CONTENT_TYPE_GUIDE`,
       );

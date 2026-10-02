@@ -74,6 +74,8 @@ Rules that follow from this:
 - Issue independent queries with `Promise.all`, never sequentially. Both document loaders and the save action's pre-flight checks already do this.
 - Never loop a statement per row. The save action batches tab inserts/updates/deletes through `UNNEST(...)` so it costs a constant ~7 statements whether the document has 1 tab or 20. Keep it that way: a per-tab loop here costs ~200 ms per tab per autosave.
 - Fold related writes into one statement rather than two round trips. `recordDocumentChange()` in `app/lib/sync.server.ts` bumps the revision and appends the sync-feed row in a single data-modifying CTE, and optionally folds in a title update.
+- Lock the document row and read what the write needs in one statement. `lockOwnedDocument()` in `app/lib/document-service.server.ts` uses the same CTE the web editor's save action uses, returning the locked row plus the tab list. Do not add a second read for the tab's slugs or positions; that is the round trip it exists to avoid. It deliberately does **not** select `html`, so a single-tab write never pulls content it is not changing — `updateUserDocumentTab` passes `NULL` for untouched columns and lets `COALESCE` leave them alone.
+- The single-tab and rename write paths build their response from that locked snapshot rather than re-reading the document. `updateUserDocument()` is the exception: its loop can insert, update, rename, reposition and delete tabs at once, so it still re-reads rather than duplicating that logic to save two statements.
 - `withTransaction()` still issues an explicit `BEGIN`/`COMMIT`; that is two unavoidable round trips. Do not try to remove them by giving up the row lock or the revision guard.
 
 `PERF_LOG=1` makes `app/lib/perf.server.ts` emit one parseable line per request, e.g. `[perf] edit auth=2ms q_doc=11ms total=13ms`. Use it to confirm a change actually reduced work, and prefer counting statements (for example with `pg_stat_statements`) over inferring it from timings.
@@ -89,7 +91,9 @@ Two deliberate limits, both worth preserving:
 - It is **not** applied to content typed in the web editor. Authored HTML must never be rewritten behind the user's back, so `validateSaveTabs()` is left alone and the MCP layer adapts its `content`/`contentType` arguments to the validator's `html`/`content_type` shape.
 - It does **not** unwrap a full HTML document. Full documents render correctly in the preview and at `/raw`; only the `doc` content type is broken by them, and that is rejected at validation time instead.
 
-The MCP tool descriptions in `app/routes/mcp.ts` document the `contentType` contract (`CONTENT_TYPE_GUIDE`). Keep that guidance in sync with the validators; an agent that has to guess produces a document that looks fine in the editor and is broken on export.
+The MCP tool descriptions in `app/routes/mcp.ts` document the `contentType` contract (`CONTENT_TYPE_GUIDE`). Keep that guidance in sync with the validators; an agent that has to guess produces a document that looks fine in the editor and is broken on export. `CONTENT_TYPE_GUIDE` interpolates `MAX_TABS` rather than restating the limit, so the advertised ceiling cannot drift from the enforced one.
+
+Two validators with different failure types are shared by the web editor and the agent path: `validateSaveTabs()` throws a `Response`, while `validateNewDocumentTabs()` and the rest throw `AgentWriteError`. `runWrite()` in `app/routes/mcp.ts` maps both through `toolFailure()`; without that, a rejected `update_document` reached the client as the literal text `[object Response]`. New write tools must go through `runWrite`, and their validation must run inside the `run` closure so its failures reach the same handler.
 
 ## Databases and Migrations
 

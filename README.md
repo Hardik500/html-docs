@@ -221,10 +221,21 @@ Access tokens are opaque, expire after one hour, and are bound to the MCP resour
 | Scope | Tools |
 | --- | --- |
 | `docs:read` | `whoami`, `list_documents`, `search_documents`, `get_document`, `get_tab` |
-| `docs:write` | `create_document`, `update_document`, `update_tab` |
-| `docs:delete` | `delete_document` |
+| `docs:write` | `create_document`, `update_document`, `update_tab`, `create_tab`, `rename_document` |
+| `docs:delete` | `delete_document`, `delete_tab` |
 
 All tools operate only on documents owned by the authenticated account.
+
+Prefer the single-target tools over `update_document`, which replaces a document's whole tab list and therefore requires reading the document and resending every tab's content:
+
+| To do this | Use | Not |
+| --- | --- | --- |
+| Add a tab | `create_tab` | `update_document` with the full tab list |
+| Remove a tab | `delete_tab` | `update_document` with `_delete` plus every surviving tab |
+| Change a title | `rename_document` | `update_document` |
+| Edit one tab | `update_tab` | `update_document` |
+
+`delete_tab` requires `docs:delete` rather than `docs:write`, because it destroys content irreversibly, the same as `delete_document`. A document must keep at least one tab; delete the document instead. Tab slugs are assigned when a tab is created and never change, so renaming a tab leaves its `/raw/:docId/:tabSlug` URL and any share link working.
 
 Every mutating tool requires an explicit `baseRevision` argument. Read the document first and pass the revision it reports; a mismatch is rejected with a conflict rather than overwriting a newer edit.
 
