@@ -29,6 +29,7 @@ import {
 } from "~/lib/document-input";
 import { checkMcpRate } from "~/lib/ratelimit.server";
 import { isDesktopRuntime } from "~/lib/runtime.server";
+import { mcpResourceUrl } from "~/lib/mcp-resource.server";
 
 const MCP_VERSION = "0.1.0";
 const MAX_REQUEST_BYTES = 1_000_000;
@@ -181,8 +182,12 @@ const tabWriteSchema = z
     }
   });
 
+// Resolved by the shared helper, not derived here: this endpoint validates a
+// credential's resource against the same value the OAuth flow bound it to, and
+// deriving it independently locked out correctly-minted grants whenever APP_URL
+// was set without MCP_RESOURCE_URL.
 function resourceUrl(request: Request): URL {
-  return new URL(process.env.MCP_RESOURCE_URL || new URL("/mcp", request.url).toString());
+  return mcpResourceUrl(request);
 }
 
 function createMcpServer(identity: AgentIdentity, request: Request): McpServer {

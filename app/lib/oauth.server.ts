@@ -1,6 +1,20 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { query } from "./db.server";
 import { AGENT_SCOPES, type AgentScope } from "./agent-tokens.server";
+import {
+  mcpResourceOrigin as originOf,
+  resourceIdentifier as resolveResourceIdentifier,
+} from "./mcp-resource.server";
+
+/**
+ * The resource an MCP credential is bound to. Re-exported so callers keep one
+ * import site for it; the implementation lives in mcp-resource.server.ts so the
+ * MCP endpoint and `/.well-known/opencode` can resolve it without importing this
+ * database-backed module.
+ */
+export function resourceIdentifier(request: Request): string {
+  return resolveResourceIdentifier(request);
+}
 
 /**
  * OAuth 2.1 authorization for the MCP endpoint.
@@ -64,18 +78,6 @@ export function base64UrlSha256(verifier: string): string {
 }
 
 // ── Resource and issuer URLs ────────────────────────────────────────────────
-
-function originOf(request: Request): string {
-  const configured = process.env.APP_URL;
-  if (configured) return configured.replace(/\/+$/, "");
-  return new URL(request.url).origin;
-}
-
-export function resourceIdentifier(request: Request): string {
-  const configured = process.env.MCP_RESOURCE_URL;
-  if (configured) return configured;
-  return `${originOf(request)}/mcp`;
-}
 
 export interface IssuerEndpoints {
   issuer: string;

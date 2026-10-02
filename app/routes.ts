@@ -28,6 +28,9 @@ export default [
   route("/mcp", "routes/mcp.ts"),
   route("/.well-known/oauth-protected-resource", "routes/well-known.oauth-protected-resource.ts"),
   route("/.well-known/oauth-protected-resource/mcp", "routes/well-known.oauth-protected-resource.mcp.ts"),
+  // opencode's remote configuration endpoint. Advertises the MCP server so an
+  // opted-in client connects to the same resource an OAuth grant is bound to.
+  route("/.well-known/opencode", "routes/well-known.opencode.ts"),
   route("/.well-known/oauth-authorization-server", "routes/well-known.oauth-authorization-server.ts"),
   route("/.well-known/openid-configuration", "routes/well-known.openid-configuration.ts"),
   route("/oauth/register", "routes/oauth.register.ts"),

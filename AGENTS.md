@@ -93,6 +93,10 @@ Two deliberate limits, both worth preserving:
 
 The MCP tool descriptions in `app/routes/mcp.ts` document the `contentType` contract (`CONTENT_TYPE_GUIDE`). Keep that guidance in sync with the validators; an agent that has to guess produces a document that looks fine in the editor and is broken on export. `CONTENT_TYPE_GUIDE` interpolates `MAX_TABS` rather than restating the limit, so the advertised ceiling cannot drift from the enforced one.
 
+The MCP resource identifier has exactly one definition, in `app/lib/mcp-resource.server.ts`: `MCP_RESOURCE_URL`, else `APP_URL` + `/mcp`, else the request origin. Three surfaces must agree on it, because a token minted over OAuth is bound to a resource and `isWrongAudience` in `app/routes/mcp.ts` refuses a credential presented for a different one: the OAuth flow (`app/lib/oauth.server.ts`), the endpoint's own validation, and the URL advertised at `/.well-known/opencode`. These were derived separately at one point, and with `APP_URL` set but `MCP_RESOURCE_URL` unset a correctly-minted token was rejected on any non-canonical host. Do not re-derive this in a new route; import the helper.
+
+`/.well-known/opencode` serves opencode's remote config document, which is ordinary opencode config — an `mcp` object, no envelope — merged as opencode's lowest-precedence layer. The entry is `enabled: false` on purpose: opencode's own guidance for an organization advertising its own servers is to offer the entry for opt-in, and no token exists server-side to send, so it sends no `headers` and lets an opted-in client fall through to OAuth on the endpoint's 401.
+
 Two validators with different failure types are shared by the web editor and the agent path: `validateSaveTabs()` throws a `Response`, while `validateNewDocumentTabs()` and the rest throw `AgentWriteError`. `runWrite()` in `app/routes/mcp.ts` maps both through `toolFailure()`; without that, a rejected `update_document` reached the client as the literal text `[object Response]`. New write tools must go through `runWrite`, and their validation must run inside the `run` closure so its failures reach the same handler.
 
 ## Databases and Migrations

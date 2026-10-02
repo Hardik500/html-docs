@@ -197,15 +197,50 @@ Most MCP clients read an `mcpServers` block. Put your origin and token in this a
 
 Keep `"type": "http"`. An entry with a `url` and no `type` is read as a **stdio** server by several clients, including Claude Code, which then skips it with a configuration error.
 
+### Automatic configuration in opencode
+
+opencode fetches `/.well-known/opencode` from a site and merges the result as its lowest-precedence config layer, beneath your global and project config. This app serves that document, so an opencode user who opens html-docs is offered the server without copying anything.
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "html-docs": {
+      "type": "remote",
+      "url": "https://your-hosted-origin.example.com/mcp",
+      "enabled": false
+    }
+  }
+}
+```
+
+`enabled: false` is deliberate, and is what opencode's own documentation prescribes for an organization offering its own servers: the entry appears so you can opt in, rather than connecting every visitor to a server they hold no token for. Turn it on locally:
+
+```json
+{
+  "mcp": {
+    "html-docs": {
+      "type": "remote",
+      "url": "https://your-hosted-origin.example.com/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+No `Authorization` header is sent, because no token exists server-side at that point. An opted-in client reaches the endpoint, gets a `401`, and opencode then runs the OAuth flow below and stores the resulting token. If you would rather use a static agent token, add the `headers` block from the generic example instead.
+
+The endpoint is public and holds no per-user state, and it returns `404` on desktop builds, where there is no hosted origin to point a remote client at.
+
 ### Client-specific configuration
 
 The endpoint speaks Streamable HTTP with JSON responses and no session state, so it accepts `POST` only. All four clients below work as-is; a client that insists on opening a server-initiated SSE stream with `GET` will get a `405`.
 
 | Client | Where to configure | Auth shape |
 | --- | --- | --- |
+| [opencode](#opencode) | served automatically at `/.well-known/opencode`, or `opencode.json` | OAuth, or `headers.Authorization` |
 | [Claude Code](#claude-code) | `claude mcp add`, or `.mcp.json` | `headers.Authorization` |
 | [Claude Desktop](#claude-desktop) | `claude_desktop_config.json` | `headers.Authorization` |
-| [opencode](#opencode) | `opencode.json` | `headers.Authorization` |
 | [OpenAI](#openai) | Responses API request body | `authorization` |
 
 #### Claude Code
@@ -241,7 +276,24 @@ opencode uses an `mcp` key rather than `mcpServers`, and `"type": "remote"` rath
 }
 ```
 
-Use `opencode.json` in a project, or `~/.config/opencode/opencode.json` for every project. `{env:VAR}` keeps the token out of the file.
+Use `opencode.json` in a project, or `~/.config/opencode/opencode.json` for every project. `{env:VAR}` keeps the token out of the file, and `opencode mcp debug html-docs` reports the resolved connection.
+
+If you would rather use OAuth than paste a token, drop the `headers` block and let opencode authenticate on first use:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "html-docs": {
+      "type": "remote",
+      "url": "https://your-hosted-origin.example.com/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
+`opencode mcp auth html-docs` triggers the sign-in on demand, and `opencode mcp list` shows the stored credential's status.
 
 #### OpenAI
 
@@ -269,6 +321,19 @@ Two things to know before you rely on this:
 - OpenAI does not store or return the `authorization` value, so it must be sent on **every** Responses request.
 - `allowed_tools` is the cheap safety control. Listing only the read-only tools keeps a model from editing or deleting documents, and keeps the tool definitions it pays to import small. `require_approval: "never"` skips the approval round trip, which you probably do not want for a token that can write.
 
+### Resource identity
+
+An agent token minted over OAuth is bound to one **resource**, and the endpoint refuses a credential presented for a different one. All three surfaces must therefore name the same value:
+
+| Surface | Value |
+| --- | --- |
+| `MCP_RESOURCE_URL` | used verbatim when set |
+| `APP_URL` | origin + `/mcp` when `MCP_RESOURCE_URL` is unset |
+| `/.well-known/oauth-protected-resource/mcp` | the `resource` field a client reads |
+| `/.well-known/opencode` | the `url` an opencode client connects to |
+
+Both env vars are optional and documented separately in the environment table, which is why the resolution order is worth stating: with `APP_URL` set and `MCP_RESOURCE_URL` unset, tokens are bound to the `APP_URL` origin, and a request arriving on any other host is still validated against it. Set `MCP_RESOURCE_URL` explicitly when the public MCP endpoint differs from `APP_URL`.
+
 ### OAuth 2.1
 
 Clients that support MCP authorization can skip manual token creation. Point the client at the endpoint and it will discover the authorization server, register itself, and open a browser consent screen:
@@ -291,6 +356,8 @@ The server implements the public-client profile only:
 - `authorization_code` and `refresh_token` grants at `/oauth/token`
 - Token revocation at `/oauth/revoke`
 - Discovery at `/.well-known/oauth-protected-resource/mcp` and `/.well-known/oauth-authorization-server`
+
+opencode additionally discovers the server at `/.well-known/opencode`; see [Automatic configuration in opencode](#automatic-configuration-in-opencode).
 
 Access tokens are opaque, expire after one hour, and are bound to the MCP resource they were issued for. Refresh tokens rotate on every use; presenting an already-rotated refresh token revokes the whole client grant. No client secrets are ever issued.
 
@@ -381,6 +448,7 @@ Key routes:
 | `/dashboard` | Signed-in document management |
 | `/dashboard/agents` | Create and revoke MCP agent tokens |
 | `/mcp` | Authenticated remote MCP endpoint |
+| `/.well-known/opencode` | Public opencode config advertising the MCP server |
 | `/d/:docId/edit` | Document editor |
 | `/d/:docId/:tabSlug` | Public document viewer |
 | `/raw/:docId/:tabSlug` | Sandboxed source rendered for the viewer (public, by design) |
